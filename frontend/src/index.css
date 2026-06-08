@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #030014;
+  color: white;
+  overflow-x: hidden;
+  font-family: Inter, sans-serif;
+}
+
+/* Premium Button Tactile System */
+button {
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), 
+              box-shadow 0.2s ease, 
+              background-color 0.2s ease, 
+              border-color 0.2s ease, 
+              filter 0.2s ease;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 4px 15px rgba(168, 85, 247, 0.12), 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+button:not(:disabled):active {
+  transform: translateY(0.5px);
+  filter: brightness(0.95);
+}

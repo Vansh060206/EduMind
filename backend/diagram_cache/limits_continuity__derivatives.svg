@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" width="100%" height="100%">
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="600" height="350" fill="#030014" rx="16" />
+  
+  <text x="25" y="35" fill="#ffffff" font-family="sans-serif" font-weight="bold" font-size="15">Visualizing Limits (ε-δ Definition)</text>
+  <text x="25" y="55" fill="#34d399" font-family="sans-serif" font-size="11">As x approaches c, f(x) approaches L within the ε-neighborhood.</text>
+
+  <line x1="60" y1="280" x2="310" y2="280" stroke="#475569" stroke-width="2" />
+  <text x="315" y="285" fill="#94a3b8" font-family="monospace" font-size="12">x</text>
+  <line x1="80" y1="80" x2="80" y2="300" stroke="#475569" stroke-width="2" />
+  <text x="75" y="70" fill="#94a3b8" font-family="monospace" font-size="12">y</text>
+
+  <rect x="80" y="140" width="220" height="60" fill="rgba(6,182,212,0.06)" />
+  <line x1="80" y1="170" x2="300" y2="170" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="3" />
+  <text x="50" y="174" fill="#06b6d4" font-family="monospace" font-size="11">L</text>
+  
+  <line x1="80" y1="140" x2="300" y2="140" stroke="rgba(6,182,212,0.3)" stroke-width="1" stroke-dasharray="2" />
+  <text x="35" y="144" fill="rgba(6,182,212,0.6)" font-family="monospace" font-size="10">L+ε</text>
+  <line x1="80" y1="200" x2="300" y2="200" stroke="rgba(6,182,212,0.3)" stroke-width="1" stroke-dasharray="2" />
+  <text x="35" y="204" fill="rgba(6,182,212,0.6)" font-family="monospace" font-size="10">L-ε</text>
+
+  <rect x="160" y="80" width="60" height="200" fill="rgba(168,85,247,0.06)" />
+  <line x1="190" y1="80" x2="190" y2="280" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3" />
+  <text x="187" y="295" fill="#a855f7" font-family="monospace" font-size="11">c</text>
+
+  <line x1="160" y1="80" x2="160" y2="280" stroke="rgba(168,85,247,0.3)" stroke-width="1" stroke-dasharray="2" />
+  <text x="145" y="295" fill="rgba(168,85,247,0.6)" font-family="monospace" font-size="10">c-δ</text>
+  <line x1="220" y1="80" x2="220" y2="280" stroke="rgba(168,85,247,0.3)" stroke-width="1" stroke-dasharray="2" />
+  <text x="215" y="295" fill="rgba(168,85,247,0.6)" font-family="monospace" font-size="10">c+δ</text>
+
+  <path d="M 90 250 Q 150 180 190 170 T 290 110" fill="none" stroke="#34d399" stroke-width="3" filter="url(#glow)" />
+  
+  <circle cx="190" cy="170" r="5" fill="#ffffff" stroke="#34d399" stroke-width="2" />
+
+  <foreignObject x="340" y="20" width="240" height="310">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="color: #cbd5e1; font-family: system-ui, sans-serif; font-size: 11px; line-height: 1.4; word-wrap: break-word; word-break: break-word;">
+      <h3 style="color: #ffffff; font-size: 13px; font-weight: bold; margin: 0 0 6px 0; border-bottom: 1px solid #334155; padding-bottom: 4px;">Concept of Limits</h3>
+      <p style="margin: 0 0 8px 0; color: #94a3b8; font-size: 10.5px;">
+        A limit describes the behavior of a function near a specific point, rather than at that point itself.
+      </p>
+      
+      <div style="margin-bottom: 8px;">
+        <strong style="color: #06b6d4; font-size: 11px;">🔍 Formal ε-δ Definition:</strong>
+        <div style="padding-left: 6px; margin-top: 2px;">
+          lim<sub>x→c</sub> f(x) = L means:
+          <div style="color: #38bdf8; font-size: 10.5px; margin: 3px 0; font-style: italic;">
+            For every ε &gt; 0, there exists a δ &gt; 0 such that if 0 &lt; |x - c| &lt; δ, then |f(x) - L| &lt; ε.
+          </div>
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 8px;">
+        <strong style="color: #a855f7; font-size: 11px;">1. Delta (δ) Neighborhood</strong>
+        <span style="color: #94a3b8; display: block; padding-left: 6px;">
+          The interval along the x-axis: (c-δ, c+δ). Represents how close x must be to c.
+        </span>
+      </div>
+
+      <div style="margin-bottom: 8px;">
+        <strong style="color: #34d399; font-size: 11px;">2. Epsilon (ε) Neighborhood</strong>
+        <span style="color: #94a3b8; display: block; padding-left: 6px;">
+          The interval along the y-axis: (L-ε, L+ε). Represents the tolerance of f(x) from the limit L.
+        </span>
+      </div>
+    </div>
+  </foreignObject>
+</svg>

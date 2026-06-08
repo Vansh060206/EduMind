@@ -1,0 +1,25 @@
+# Dependency directories
+node_modules/
+venv/
+env/
+ENV/
+.venv/
+.env
+
+# Build outputs
+dist/
+build/
+bin/
+obj/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE and System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.gemini/

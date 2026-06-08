@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" width="100%" height="100%">
+  <defs>
+    <linearGradient id="chairGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#311042" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="600" height="350" fill="#030014" rx="16" />
+  
+  <text x="25" y="35" fill="#ffffff" font-family="sans-serif" font-weight="bold" font-size="15">Visualizing Permutations (Chairs Arrangement)</text>
+  <text x="25" y="55" fill="#34d399" font-family="sans-serif" font-size="11">Arranging 3 people on 3 distinct chairs out of 5 people {A,B,C,D,E}</text>
+
+  <g>
+    <text x="25" y="100" fill="#94a3b8" font-family="sans-serif" font-weight="bold" font-size="11">PEOPLE POOL:</text>
+    <circle cx="110" cy="95" r="14" fill="#06b6d4" opacity="0.8" />
+    <text x="110" y="99" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold">A</text>
+    <circle cx="145" cy="95" r="14" fill="#a855f7" opacity="0.8" />
+    <text x="145" y="99" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold">B</text>
+    <circle cx="180" cy="95" r="14" fill="#34d399" opacity="0.8" />
+    <text x="180" y="99" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold">C</text>
+    <circle cx="215" cy="95" r="14" fill="#f59e0b" opacity="0.8" />
+    <text x="215" y="99" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold">D</text>
+    <circle cx="250" cy="95" r="14" fill="#ec4899" opacity="0.8" />
+    <text x="250" y="99" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold">E</text>
+  </g>
+
+  <rect x="35" y="150" width="70" height="70" rx="8" fill="url(#chairGrad)" stroke="#06b6d4" stroke-width="2" filter="url(#glow)" />
+  <path d="M 45 200 L 55 165 L 85 165 L 95 200 Z" fill="none" stroke="#06b6d4" stroke-dasharray="2" />
+  <text x="70" y="235" text-anchor="middle" fill="#06b6d4" font-family="sans-serif" font-weight="bold" font-size="11">Chair 1</text>
+  <text x="70" y="250" text-anchor="middle" fill="#94a3b8" font-family="monospace" font-size="11">5 choices</text>
+  
+  <rect x="130" y="150" width="70" height="70" rx="8" fill="url(#chairGrad)" stroke="#a855f7" stroke-width="2" filter="url(#glow)" />
+  <path d="M 140 200 L 150 165 L 180 165 L 190 200 Z" fill="none" stroke="#a855f7" stroke-dasharray="2" />
+  <text x="165" y="235" text-anchor="middle" fill="#a855f7" font-family="sans-serif" font-weight="bold" font-size="11">Chair 2</text>
+  <text x="165" y="250" text-anchor="middle" fill="#94a3b8" font-family="monospace" font-size="11">4 choices</text>
+
+  <rect x="225" y="150" width="70" height="70" rx="8" fill="url(#chairGrad)" stroke="#34d399" stroke-width="2" filter="url(#glow)" />
+  <path d="M 235 200 L 245 165 L 275 165 L 285 200 Z" fill="none" stroke="#34d399" stroke-dasharray="2" />
+  <text x="260" y="235" text-anchor="middle" fill="#34d399" font-family="sans-serif" font-weight="bold" font-size="11">Chair 3</text>
+  <text x="260" y="250" text-anchor="middle" fill="#94a3b8" font-family="monospace" font-size="11">3 choices</text>
+
+  <text x="117" y="190" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="18" font-weight="bold">×</text>
+  <text x="212" y="190" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="18" font-weight="bold">×</text>
+  
+  <text x="25" y="300" fill="#ffffff" font-family="sans-serif" font-size="12">Total Ways = <tspan fill="#06b6d4">5</tspan> × <tspan fill="#a855f7">4</tspan> × <tspan fill="#34d399">3</tspan> = <tspan fill="#f59e0b" font-weight="bold" font-size="14">60 ways</tspan></text>
+  <text x="25" y="318" fill="#94a3b8" font-family="monospace" font-size="10">Formula: P(5, 3) = 5! / (5-3)! = 120 / 2 = 60</text>
+
+  <foreignObject x="340" y="20" width="240" height="310">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="color: #cbd5e1; font-family: system-ui, sans-serif; font-size: 11px; line-height: 1.4; word-wrap: break-word; word-break: break-word;">
+      <h3 style="color: #ffffff; font-size: 13px; font-weight: bold; margin: 0 0 6px 0; border-bottom: 1px solid #334155; padding-bottom: 4px;">Permutations &amp; Combinations</h3>
+      <p style="margin: 0 0 8px 0; color: #94a3b8; font-size: 10.5px;">
+        Visualizing how objects are placed in distinct order-sensitive slots (like chairs).
+      </p>
+      
+      <div style="margin-bottom: 8px;">
+        <strong style="color: #06b6d4; font-size: 11px;">1. Permutation (Order Matters)</strong>
+        <div style="padding-left: 6px; margin-top: 2px;">
+          Arranging r items out of n:
+          <div style="color: #38bdf8; font-family: monospace; font-size: 11px; margin: 2px 0;">P(n, r) = n! / (n-r)!</div>
+          Every unique sequence is counted as a distinct arrangement (e.g. ABC ≠ BAC).
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 8px;">
+        <strong style="color: #a855f7; font-size: 11px;">2. Combination (Order Doesn't Matter)</strong>
+        <div style="padding-left: 6px; margin-top: 2px;">
+          Selecting r items out of n:
+          <div style="color: #c084fc; font-family: monospace; font-size: 11px; margin: 2px 0;">C(n, r) = n! / [r!(n-r)!]</div>
+          Only the group members matter, not their sequence (e.g. ABC = BAC).
+        </div>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 6px; border-radius: 6px;">
+        <strong style="color: #f59e0b; font-size: 10.5px;">🔑 Multiplication Principle:</strong>
+        <span style="color: #94a3b8; font-size: 10px; display: block; margin-top: 2px;">
+          If an event can occur in m ways, and a second in n ways, then both can occur in m × n ways.
+        </span>
+      </div>
+    </div>
+  </foreignObject>
+</svg>

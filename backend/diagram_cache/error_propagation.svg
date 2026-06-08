@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" width="100%" height="100%">
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="600" height="350" fill="#030014" rx="16" />
+  
+  <!-- Network Node 1 -->
+  <rect x="80" y="140" width="120" height="60" rx="8" fill="rgba(255,255,255,0.02)" stroke="#a855f7" stroke-width="1.5" />
+  <text x="140" y="175" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-weight="bold" font-size="12">Concept Node</text>
+  
+  <!-- Link -->
+  <line x1="200" y1="170" x2="380" y2="170" stroke="#a855f7" stroke-width="2" stroke-dasharray="3" />
+  
+  <!-- Network Node 2 -->
+  <rect x="380" y="140" width="140" height="60" rx="8" fill="rgba(255,255,255,0.02)" stroke="#a855f7" stroke-width="1.5" filter="url(#glow)" />
+  <text x="450" y="175" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-weight="bold" font-size="12">Error Propagation</text>
+  
+  <!-- Labels -->
+  <text x="30" y="40" fill="#ffffff" font-family="sans-serif" font-weight="bold" font-size="16">Error Propagation Conceptual Schematic</text>
+  <text x="30" y="60" fill="#a855f7" font-family="monospace" font-size="12">Subject: Physics</text>
+</svg>

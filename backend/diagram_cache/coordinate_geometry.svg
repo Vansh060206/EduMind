@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 350" width="100%" height="100%">
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="600" height="350" fill="#030014" rx="16" />
+  
+  <text x="25" y="35" fill="#ffffff" font-family="sans-serif" font-weight="bold" font-size="15">Coordinate Geometry: Conic Section (Ellipse)</text>
+  <text x="25" y="55" fill="#34d399" font-family="sans-serif" font-size="11">Standard Ellipse: x²/a² + y²/b² = 1 (a &gt; b)</text>
+
+  <line x1="40" y1="180" x2="320" y2="180" stroke="#475569" stroke-width="1.5" />
+  <text x="325" y="185" fill="#94a3b8" font-family="monospace" font-size="12">X</text>
+  <line x1="180" y1="60" x2="180" y2="300" stroke="#475569" stroke-width="1.5" />
+  <text x="175" y="50" fill="#94a3b8" font-family="monospace" font-size="12">Y</text>
+
+  <ellipse cx="180" cy="180" rx="110" ry="70" fill="none" stroke="#34d399" stroke-width="2.5" filter="url(#glow)" />
+  
+  <circle cx="290" cy="180" r="4" fill="#ffffff" />
+  <text x="295" y="195" fill="#94a3b8" font-family="sans-serif" font-size="10">(a, 0)</text>
+  
+  <circle cx="180" cy="110" r="4" fill="#ffffff" />
+  <text x="185" y="105" fill="#94a3b8" font-family="sans-serif" font-size="10">(0, b)</text>
+
+  <circle cx="255" cy="180" r="4" fill="#06b6d4" />
+  <text x="250" y="195" fill="#06b6d4" font-family="sans-serif" font-size="10">F₁(ae, 0)</text>
+
+  <circle cx="105" cy="180" r="4" fill="#06b6d4" />
+  <text x="85" y="195" fill="#06b6d4" font-family="sans-serif" font-size="10">F₂(-ae, 0)</text>
+
+  <line x1="310" y1="70" x2="310" y2="290" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3" />
+  <text x="315" y="85" fill="#f59e0b" font-family="sans-serif" font-size="9">x = a/e (Directrix)</text>
+
+  <circle cx="235" cy="135" r="5" fill="#a855f7" />
+  <text x="240" y="130" fill="#a855f7" font-family="sans-serif" font-size="10" font-weight="bold">P(x₁, y₁)</text>
+  
+  <line x1="235" y1="135" x2="255" y2="180" stroke="rgba(255,255,255,0.4)" stroke-width="1" />
+  <line x1="235" y1="135" x2="105" y2="180" stroke="rgba(255,255,255,0.4)" stroke-width="1" />
+
+  <foreignObject x="340" y="20" width="240" height="310">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="color: #cbd5e1; font-family: system-ui, sans-serif; font-size: 11px; line-height: 1.4; word-wrap: break-word; word-break: break-word;">
+      <h3 style="color: #ffffff; font-size: 13px; font-weight: bold; margin: 0 0 6px 0; border-bottom: 1px solid #334155; padding-bottom: 4px;">Properties of Ellipse</h3>
+      <p style="margin: 0 0 8px 0; color: #94a3b8; font-size: 10.5px;">
+        An ellipse is the locus of a point whose sum of distances from two fixed points (foci) is constant and equal to the major axis.
+      </p>
+      
+      <div style="margin-bottom: 6px;">
+        <strong style="color: #06b6d4; font-size: 11px;">1. Focal Property:</strong>
+        <span style="color: #94a3b8; display: block; padding-left: 6px;">
+          For any point P, PF₁ + PF₂ = 2a (Constant sum).
+        </span>
+      </div>
+
+      <div style="margin-bottom: 6px;">
+        <strong style="color: #a855f7; font-size: 11px;">2. Eccentricity (e):</strong>
+        <span style="color: #94a3b8; display: block; padding-left: 6px;">
+          e = √(1 - b²/a²) &lt; 1. Measures the deviation from circular shape.
+        </span>
+      </div>
+
+      <div style="margin-bottom: 6px;">
+        <strong style="color: #f59e0b; font-size: 11px;">3. Directrix &amp; Focus Ratio:</strong>
+        <span style="color: #94a3b8; display: block; padding-left: 6px;">
+          For any point P on ellipse, Distance(P, Focus) / Distance(P, Directrix) = e (constant).
+        </span>
+      </div>
+    </div>
+  </foreignObject>
+</svg>
