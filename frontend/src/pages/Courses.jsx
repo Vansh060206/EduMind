@@ -2199,121 +2199,149 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
 
                       {/* Rendered Summary Content */}
                       <div className="space-y-5 text-gray-300">
-                        {activeLesson.summary.split("\n").map((line, idx) => {
-                          const trimmed = line.trim();
-                          if (!trimmed) return null;
-                          
-                          if (trimmed.startsWith("### ")) {
-                            const cleanHeader = trimmed.replace("### ", "");
-                            // Detect if there's a colon separating header name and content on the same line
-                            const colonIdx = cleanHeader.indexOf(":");
-                            if (colonIdx !== -1 && colonIdx < 30) {
-                              const headerName = cleanHeader.substring(0, colonIdx).trim();
-                              const headerContent = cleanHeader.substring(colonIdx + 1).trim();
+                        {(() => {
+                          const summaryLines = [];
+                          let insideMath = false;
+                          let mathBuffer = "";
+
+                          (activeLesson.summary || "").split("\n").forEach((line) => {
+                            const trimmed = line.trim();
+                            if (trimmed.startsWith("$$") && !insideMath) {
+                              insideMath = true;
+                              mathBuffer = line;
+                            } else if (insideMath) {
+                              mathBuffer += "\n" + line;
+                              if (trimmed.endsWith("$$")) {
+                                summaryLines.push(mathBuffer);
+                                insideMath = false;
+                                mathBuffer = "";
+                              }
+                            } else {
+                              summaryLines.push(line);
+                            }
+                          });
+                          if (insideMath && mathBuffer) {
+                            if (!mathBuffer.trim().endsWith("$$")) {
+                              mathBuffer += "\n$$";
+                            }
+                            summaryLines.push(mathBuffer);
+                          }
+
+                          return summaryLines.map((line, idx) => {
+                            const trimmed = line.trim();
+                            if (!trimmed) return null;
+
+                            if (trimmed.startsWith("### ")) {
+                              const cleanHeader = trimmed.replace("### ", "");
+                              // Detect if there's a colon separating header name and content on the same line
+                              const colonIdx = cleanHeader.indexOf(":");
+                              if (colonIdx !== -1 && colonIdx < 30) {
+                                const headerName = cleanHeader.substring(0, colonIdx).trim();
+                                const headerContent = cleanHeader.substring(colonIdx + 1).trim();
+                                return (
+                                  <div key={idx} className="space-y-2.5 pt-5 pb-1">
+                                    <h3 
+                                      className="text-base font-bold text-white tracking-wider uppercase border-b border-white/5 pb-2.5 flex items-center gap-2"
+                                      style={{ color: activeCourseConfig.color }}
+                                    >
+                                      <span className="w-2 h-4 rounded-full" style={{ backgroundColor: activeCourseConfig.color }} />
+                                      {headerName}
+                                    </h3>
+                                    <p className="text-[14.5px] text-gray-300 leading-relaxed pl-1">
+                                      {renderFormattedText(headerContent)}
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              
                               return (
-                                <div key={idx} className="space-y-2.5 pt-5 pb-1">
-                                  <h3 
-                                    className="text-base font-bold text-white tracking-wider uppercase border-b border-white/5 pb-2.5 flex items-center gap-2"
-                                    style={{ color: activeCourseConfig.color }}
-                                  >
-                                    <span className="w-2 h-4 rounded-full" style={{ backgroundColor: activeCourseConfig.color }} />
-                                    {headerName}
-                                  </h3>
-                                  <p className="text-[14.5px] text-gray-300 leading-relaxed pl-1">
-                                    {renderFormattedText(headerContent)}
-                                  </p>
-                                </div>
+                                <h3 
+                                  key={idx} 
+                                  className="text-base font-bold text-white tracking-wider uppercase border-b border-white/5 pb-2.5 pt-5 flex items-center gap-2"
+                                  style={{ color: activeCourseConfig.color }}
+                                >
+                                  <span className="w-2 h-4 rounded-full" style={{ backgroundColor: activeCourseConfig.color }} />
+                                  {cleanHeader}
+                                </h3>
                               );
                             }
                             
-                            return (
-                              <h3 
-                                key={idx} 
-                                className="text-base font-bold text-white tracking-wider uppercase border-b border-white/5 pb-2.5 pt-5 flex items-center gap-2"
-                                style={{ color: activeCourseConfig.color }}
-                              >
-                                <span className="w-2 h-4 rounded-full" style={{ backgroundColor: activeCourseConfig.color }} />
-                                {cleanHeader}
-                              </h3>
-                            );
-                          }
-                          
-                          // Block equations
-                          if (trimmed.startsWith("$$")) {
-                            return (
-                              <div 
-                                key={idx} 
-                                className="p-6 rounded-xl border formula-font text-[17px] leading-relaxed my-4.5 shadow-md relative overflow-hidden group transition-all duration-300 hover:scale-[1.01] text-center"
-                                style={{ 
-                                  background: `linear-gradient(135deg, ${activeCourseConfig.color}0c, rgba(255,255,255,0.015))`, 
-                                  borderColor: `${activeCourseConfig.color}35`,
-                                  color: "#ffffff",
-                                  boxShadow: `0 6px 24px -6px ${activeCourseConfig.glowColor}`
-                                }}
-                              >
-                                {/* Left neon border highlight indicator */}
-                                <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-r-md" style={{ backgroundColor: activeCourseConfig.color }} />
-                                <span className="font-extrabold text-white tracking-wide">{cleanMathLaTeX(trimmed)}</span>
-                              </div>
-                            );
-                          }
+                            // Block equations
+                            if (trimmed.startsWith("$$")) {
+                              return (
+                                <div 
+                                  key={idx} 
+                                  className="p-6 rounded-xl border formula-font text-[17px] leading-relaxed my-4.5 shadow-md relative overflow-hidden group transition-all duration-300 hover:scale-[1.01] text-center"
+                                  style={{ 
+                                    background: `linear-gradient(135deg, ${activeCourseConfig.color}0c, rgba(255,255,255,0.015))`, 
+                                    borderColor: `${activeCourseConfig.color}35`,
+                                    color: "#ffffff",
+                                    boxShadow: `0 6px 24px -6px ${activeCourseConfig.glowColor}`
+                                  }}
+                                >
+                                  {/* Left neon border highlight indicator */}
+                                  <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-r-md" style={{ backgroundColor: activeCourseConfig.color }} />
+                                  <span className="font-extrabold text-white tracking-wide">{cleanMathLaTeX(trimmed)}</span>
+                                </div>
+                              );
+                            }
 
-                          // Formula blocks: matches lines that start with "- " and contain math symbols like "=", "+", "-", "*", "/", "^", or standard equations
-                          const hasMathSymbol = /[\=\+\-\*\/\^θωατλσε∮·]/.test(trimmed);
-                          const isFormula = (trimmed.startsWith("- ") || trimmed.startsWith("v =") || trimmed.startsWith("I =") || trimmed.startsWith("τ =") || trimmed.startsWith("P =") || trimmed.startsWith("L =")) && hasMathSymbol;
-                          const isListItem = trimmed.startsWith("- ") || trimmed.match(/^\d+\./);
+                            // Formula blocks: matches lines that start with "- " and contain math symbols like "=", "+", "-", "*", "/", "^", or standard equations
+                            const hasMathSymbol = /[\=\+\-\*\/\^θωατλσε∮·]/.test(trimmed);
+                            const isFormula = (trimmed.startsWith("- ") || trimmed.startsWith("v =") || trimmed.startsWith("I =") || trimmed.startsWith("τ =") || trimmed.startsWith("P =") || trimmed.startsWith("L =")) && hasMathSymbol;
+                            const isListItem = trimmed.startsWith("- ") || trimmed.match(/^\d+\./);
 
-                          if (isFormula) {
-                            return (
-                              <div 
-                                key={idx} 
-                                className="p-5 rounded-xl border formula-font text-[14.5px] leading-relaxed my-3.5 shadow-md relative overflow-hidden group transition-all duration-300 hover:scale-[1.005]"
-                                style={{ 
-                                  background: `linear-gradient(135deg, ${activeCourseConfig.color}08, rgba(255,255,255,0.01))`, 
-                                  borderColor: `${activeCourseConfig.color}25`,
-                                  color: "#ffffff",
-                                  boxShadow: `0 4px 20px -5px ${activeCourseConfig.glowColor}`
-                                }}
-                              >
-                                {/* Left neon border highlight indicator */}
-                                <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-r-md" style={{ backgroundColor: activeCourseConfig.color }} />
-                                <span className="pl-3 font-semibold text-white/95">{cleanMathLaTeX(trimmed.replace(/^[-\s]+/, ""))}</span>
-                              </div>
-                            );
-                          }
+                            if (isFormula) {
+                              return (
+                                <div 
+                                  key={idx} 
+                                  className="p-5 rounded-xl border formula-font text-[14.5px] leading-relaxed my-3.5 shadow-md relative overflow-hidden group transition-all duration-300 hover:scale-[1.005]"
+                                  style={{ 
+                                    background: `linear-gradient(135deg, ${activeCourseConfig.color}08, rgba(255,255,255,0.01))`, 
+                                    borderColor: `${activeCourseConfig.color}25`,
+                                    color: "#ffffff",
+                                    boxShadow: `0 4px 20px -5px ${activeCourseConfig.glowColor}`
+                                  }}
+                                >
+                                  {/* Left neon border highlight indicator */}
+                                  <div className="absolute left-0 top-0 bottom-0 w-1.5 rounded-r-md" style={{ backgroundColor: activeCourseConfig.color }} />
+                                  <span className="pl-3 font-semibold text-white/95">{cleanMathLaTeX(trimmed.replace(/^[-\s]+/, ""))}</span>
+                                </div>
+                              );
+                            }
 
-                          if (isListItem) {
-                            const boldMatch = trimmed.match(/^\d+\.\s+\*\*(.*?)\*\*:(.*)/) || trimmed.match(/^-\s+\*\*(.*?)\*\*:(.*)/);
-                            if (boldMatch) {
+                            if (isListItem) {
+                              const boldMatch = trimmed.match(/^\d+\.\s+\*\*(.*?)\*\*:(.*)/) || trimmed.match(/^-\s+\*\*(.*?)\*\*:(.*)/);
+                              if (boldMatch) {
+                                return (
+                                  <div key={idx} className="pl-4 py-2 flex items-start gap-3 text-[14.5px] text-gray-200">
+                                    <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: activeCourseConfig.color }} />
+                                    <p className="leading-relaxed">
+                                      <span className="font-bold text-white text-[15px]">{renderFormattedText(boldMatch[1])}:</span>
+                                      <span className="text-gray-300 ml-1.5">{renderFormattedText(boldMatch[2])}</span>
+                                    </p>
+                                  </div>
+                                );
+                              }
+
                               return (
                                 <div key={idx} className="pl-4 py-2 flex items-start gap-3 text-[14.5px] text-gray-200">
-                                  <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: activeCourseConfig.color }} />
-                                  <p className="leading-relaxed">
-                                    <span className="font-bold text-white text-[15px]">{renderFormattedText(boldMatch[1])}:</span>
-                                    <span className="text-gray-300 ml-1.5">{renderFormattedText(boldMatch[2])}</span>
+                                  <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0 bg-gray-600" />
+                                  <p className="leading-relaxed text-gray-300">
+                                    {renderFormattedText(trimmed.replace(/^[-\d.]+\s*/, ""))}
                                   </p>
                                 </div>
                               );
                             }
 
+                            // Regular paragraph
                             return (
-                              <div key={idx} className="pl-4 py-2 flex items-start gap-3 text-[14.5px] text-gray-200">
-                                <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0 bg-gray-600" />
-                                <p className="leading-relaxed text-gray-300">
-                                  {renderFormattedText(trimmed.replace(/^[-\d.]+\s*/, ""))}
-                                </p>
-                              </div>
+                              <p key={idx} className="text-[14.5px] text-gray-300 leading-relaxed pl-1">
+                                {renderFormattedText(trimmed)}
+                              </p>
                             );
-                          }
-
-
-                        // Regular paragraph
-                        return (
-                          <p key={idx} className="text-[14.5px] text-gray-300 leading-relaxed pl-1">
-                            {renderFormattedText(trimmed)}
-                          </p>
-                        );
-                      })}
+                          });
+                        })()}
                     </div>
                   </div>
                 ) : (
