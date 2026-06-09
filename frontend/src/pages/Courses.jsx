@@ -439,6 +439,7 @@ export default function Courses() {
   const [quizStartTime, setQuizStartTime] = useState(null);
   const [quizEnded, setQuizEnded] = useState(false);
   const [predictingRisk, setPredictingRisk] = useState(false);
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [riskResult, setRiskResult] = useState(null);
   const [lastWrongTopic, setLastWrongTopic] = useState(null);
   
