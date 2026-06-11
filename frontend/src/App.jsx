@@ -7,6 +7,7 @@ import Login from "./pages/login";
 import LandingPage from "./pages/LandingPage";
 import { Suspense, lazy } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
+import RocketLoader from "./components/RocketLoader";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const ExploreFeatures = lazy(() => import("./pages/ExploreFeatures"));
@@ -267,11 +268,7 @@ function AuthListener() {
 }
 
 // ── FALLBACK LOADER ─────────────────────────────
-const PageLoader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-[#030014]">
-    <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-  </div>
-);
+const PageLoader = () => <RocketLoader />;
 
 export default function App() {
   return (
