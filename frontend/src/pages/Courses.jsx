@@ -697,6 +697,12 @@ export default function Courses() {
       // Post to backend enroll endpoint
       await api.post(`/courses/${courseId}/enroll?student_id=${activeStudentId}`);
       
+      // Save locally to localStorage to prevent sync delays
+      const localEnrollments = JSON.parse(localStorage.getItem(`edumind_local_enrollments_${activeStudentId}`) || "[]");
+      if (!localEnrollments.includes(courseId)) {
+        localStorage.setItem(`edumind_local_enrollments_${activeStudentId}`, JSON.stringify([...localEnrollments, courseId]));
+      }
+
       // Optimistic update of local enrollment state
       const newEnroll = { course_id: courseId, student_id: activeStudentId };
       setEnrollments(prev => {
@@ -736,6 +742,12 @@ export default function Courses() {
           student_id: activeStudentId,
           course_id: courseId
         });
+
+        // Save locally to localStorage to prevent sync delays
+        const localEnrollments = JSON.parse(localStorage.getItem(`edumind_local_enrollments_${activeStudentId}`) || "[]");
+        if (!localEnrollments.includes(courseId)) {
+          localStorage.setItem(`edumind_local_enrollments_${activeStudentId}`, JSON.stringify([...localEnrollments, courseId]));
+        }
 
         // Optimistic update of local enrollment state
         const newEnroll = { course_id: courseId, student_id: activeStudentId };
@@ -783,7 +795,9 @@ export default function Courses() {
 
   // Check enrollment status
   const isEnrolled = (courseId) => {
-    return enrollments.some(e => e.course_id === courseId);
+    const activeStudentId = studentId || JSON.parse(localStorage.getItem("edumind_user") || "{}").id;
+    const localEnrollments = activeStudentId ? JSON.parse(localStorage.getItem(`edumind_local_enrollments_${activeStudentId}`) || "[]") : [];
+    return enrollments.some(e => e.course_id === courseId) || localEnrollments.includes(courseId);
   };
 
   // Calculate course progress percentage

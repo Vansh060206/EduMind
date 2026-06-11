@@ -464,6 +464,17 @@ export default function Dashboard() {
           }
         }
 
+        // Merge with local storage enrollments to prevent sync lag
+        const localEnrollments = JSON.parse(localStorage.getItem(`edumind_local_enrollments_${activeUserId}`) || "[]");
+        localEnrollments.forEach(cId => {
+          if (!enrolledCourses.some(e => e.course_id === cId)) {
+            enrolledCourses.push({
+              course_id: cId,
+              student_id: activeUserId
+            });
+          }
+        });
+
         const coursesCount = enrolledCourses.length;
         const quizzesCount = quizResults.length;
 
