@@ -413,6 +413,18 @@ export default function Courses() {
     }
   }, [activeCourseId, dynamicCurriculums]);
 
+  // Auto-select first lesson when curriculum loads or is available
+  useEffect(() => {
+    if (activeCourseId && !activeLessonId) {
+      const courseConfig = dynamicCurriculums[activeCourseId] || CURRICULUM[activeCourseId];
+      if (courseConfig && courseConfig.modules && courseConfig.modules[0] && courseConfig.modules[0].lessons && courseConfig.modules[0].lessons[0]) {
+        const nextL = getNextLesson(activeCourseId);
+        const targetLesson = nextL || courseConfig.modules[0].lessons[0];
+        setActiveLessonId(targetLesson.id);
+      }
+    }
+  }, [activeCourseId, activeLessonId, dynamicCurriculums]);
+
   // Study timer state
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -510,10 +522,21 @@ export default function Courses() {
     } catch (err) {
       console.warn("Backend API failed to load courses, trying direct Supabase fallback:", err);
       try {
-        const { data: coursesData } = await supabase.from("courses").select("*");
+        const { data: coursesResData } = await supabase.from("courses").select("*");
+        let coursesData = coursesResData || [];
+
+        if (coursesData.length === 0) {
+          coursesData = Object.values(CURRICULUM).map(c => ({
+            id: c.id,
+            title: c.title,
+            subject: c.subject,
+            description: c.description || "Master core formulas and structural concepts with interactive curriculum content.",
+          }));
+        }
+
         const { data: enrollmentsData } = await supabase.from("enrollments").select("*").eq("student_id", activeStudentId);
         
-        setCourses(coursesData || []);
+        setCourses(coursesData);
         setEnrollments(enrollmentsData || []);
         console.log("[EduMind Diagnostics] Courses enrollments (direct fallback):", enrollmentsData);
 
@@ -1049,7 +1072,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
     try {
       const res = await api.post("/courses/generate-diagram", {
         topic: activeLesson.topic,
-        subject: activeCourse.subject,
+        subject: activeCourse?.subject || activeCourseConfig.subject,
         force_refresh: isForce
       });
       
@@ -2011,7 +2034,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
            VIEW 2: IMMERSIVE ACTIVE COURSE WORKSPACE
            ────────────────────────────────────────────────────────── */
         <div className="flex-1 flex flex-col lg:flex-row relative z-10 max-h-screen overflow-hidden">
-          {loadingCurriculum ? (
+          {loadingCurriculum || !activeLesson ? (
             <div className="flex-1 flex flex-col items-center justify-center bg-[#030014] text-center p-8 relative min-h-screen w-full">
               <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-purple-500/5 blur-[120px] rounded-full pointer-events-none" />
               <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-cyan-500/5 blur-[120px] rounded-full pointer-events-none" />
@@ -2447,7 +2470,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
                                         onClick={() => {
                                           const cleanFormula = cleanMathLaTeX(eq.formula);
                                           const prompt = encodeURIComponent(`Derive the formula: ${eq.label} (${cleanFormula})`);
-                                          navigate(`/ask-aria?q=${prompt}&subject=${activeCourse.subject}`);
+                                          navigate(`/ask-aria?q=${prompt}&subject=${activeCourse?.subject || activeCourseConfig.subject}`);
                                         }}
                                         className="flex-1 py-1.5 rounded-lg border border-yellow-500/15 bg-yellow-500/5 hover:bg-yellow-500/15 text-yellow-300/90 hover:text-yellow-200 text-[10px] font-bold flex items-center justify-center gap-1.5 hover:scale-[1.01] active:scale-[0.99] transition-all"
                                       >
@@ -2480,7 +2503,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
                 <div className="w-full lg:w-80 flex-shrink-0 p-6 lg:p-8 lg:border-l border-white/5 bg-[#07041a]/40 backdrop-blur-md flex flex-col gap-6 lg:max-h-screen overflow-y-auto">
                   
                   {(() => {
-                    const simMapping = getSimulationMapping(activeLesson.topic, activeCourse.subject);
+                    const simMapping = getSimulationMapping(activeLesson.topic, activeCourse?.subject || activeCourseConfig.subject);
                     return (
                       <>
                         {/* Digital Active Timer Tool */}
@@ -2915,7 +2938,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
 
                     <div className="flex gap-3 justify-center max-w-sm mx-auto">
                       <button
-                        onClick={() => handleStartFlashcards(activeLesson.topic, activeCourse.subject)}
+                        onClick={() => handleStartFlashcards(activeLesson.topic, activeCourse?.subject || activeCourseConfig.subject)}
                         className="flex-1 py-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white text-xs font-bold tracking-widest uppercase transition-all"
                       >
                         Review Again
