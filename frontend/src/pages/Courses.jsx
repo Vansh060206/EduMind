@@ -1069,7 +1069,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
 
   // Generate SVG diagram via backend LLM
   const handleGenerateDiagram = async (forceRefresh = false) => {
-    if (!activeLesson || !activeCourse) return;
+    if (!activeLesson) return;
     
     const isForce = forceRefresh === true;
     
@@ -1078,9 +1078,13 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
     setDiagramSvg("");
     
     try {
+      let sub = activeCourse?.subject || activeCourseConfig?.subject || "Science";
+      if (sub === "Maths") sub = "Mathematics";
+      const cleanTopic = activeLesson.topic || activeLesson.title || "General Concepts";
+
       const res = await api.post("/courses/generate-diagram", {
-        topic: activeLesson.topic,
-        subject: activeCourse?.subject || activeCourseConfig.subject,
+        topic: cleanTopic,
+        subject: sub,
         force_refresh: isForce
       });
       

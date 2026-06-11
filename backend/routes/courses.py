@@ -14,11 +14,13 @@ logger = logging.getLogger("uvicorn")
 router = APIRouter()
 
 class DiagramRequest(BaseModel):
-    topic: str
-    subject: str
+    topic: str = None
+    subject: str = None
     force_refresh: bool = False
 
 def generate_fallback_svg(subject: str, topic: str) -> str:
+    subject = str(subject or "Science")
+    topic = str(topic or "General Concepts")
     subject_lower = subject.lower()
     topic_lower = topic.lower()
     
@@ -539,8 +541,12 @@ async def my_courses(student_id: str):
 
 @router.post("/generate-diagram")
 async def generate_diagram(data: DiagramRequest):
+    topic = data.topic or "General Concepts"
+    subject = data.subject or "Science"
+    force_refresh = data.force_refresh or False
+    
     # Clean topic name to generate a safe cache file name
-    safe_topic = "".join(c for c in data.topic if c in f"-_.() {string.ascii_letters}{string.digits}")
+    safe_topic = "".join(c for c in topic if c in f"-_.() {string.ascii_letters}{string.digits}")
     safe_topic = safe_topic.replace(" ", "_").lower()
     
     cache_dir = Path("diagram_cache")
@@ -548,21 +554,21 @@ async def generate_diagram(data: DiagramRequest):
     cache_file = cache_dir / f"{safe_topic}.svg"
     
     # If cache exists and force_refresh is not True, return cached diagram
-    if cache_file.exists() and not data.force_refresh:
+    if cache_file.exists() and not force_refresh:
         try:
             svg_code = cache_file.read_text(encoding="utf-8")
             if svg_code.strip():
-                logger.info(f"Returning cached diagram for: {data.topic}")
+                logger.info(f"Returning cached diagram for: {topic}")
                 return {"svg": svg_code}
         except Exception as cache_err:
             logger.warning(f"Failed to read cache file {cache_file}: {cache_err}")
 
     # If it is not a force refresh (initial load), check if we have a custom topic-specific fallback SVG.
     # If so, return it directly for absolute visual excellence and zero latency!
-    if not data.force_refresh:
-        fallback_svg = generate_fallback_svg(data.subject, data.topic)
+    if not force_refresh:
+        fallback_svg = generate_fallback_svg(subject, topic)
         if "Conceptual Schematic" not in fallback_svg:
-            logger.info(f"Returning handcrafted high-fidelity SVG for core topic: {data.topic}")
+            logger.info(f"Returning handcrafted high-fidelity SVG for core topic: {topic}")
             try:
                 cache_file.write_text(fallback_svg, encoding="utf-8")
             except Exception as write_err:
@@ -574,10 +580,10 @@ async def generate_diagram(data: DiagramRequest):
 
     if not api_key:
         logger.warning("GROQ_API_KEY is not defined in .env, using local fallback SVG.")
-        svg_code = generate_fallback_svg(data.subject, data.topic)
+        svg_code = generate_fallback_svg(subject, topic)
     else:
         prompt = f"""You are an expert Class 11-12 scientific diagram designer and illustrator.
-Create a responsive, modern, dark-mode themed SVG diagram to visually explain the academic topic: '{data.topic}' in the subject '{data.subject}' for Class 11-12 students preparing for competitive exams like JEE/NEET.
+Create a responsive, modern, dark-mode themed SVG diagram to visually explain the academic topic: '{topic}' in the subject '{subject}' for Class 11-12 students preparing for competitive exams like JEE/NEET.
 The diagram must look professional, clean, and highly educational (similar to high-quality interactive geometry/science graphics).
 
 Design specifications:
@@ -660,7 +666,7 @@ Output ONLY valid, clean XML SVG code starting with '<svg' and ending with '</sv
                     raise Exception(f"Backup model returned status {res.status_code}: {res.text}")
             except Exception as e2:
                 logger.error(f"Backup model also failed to generate diagram: {e2}. Using fallback SVG.")
-                svg_code = generate_fallback_svg(data.subject, data.topic)
+                svg_code = generate_fallback_svg(subject, topic)
 
     # Save to cache if valid SVG was returned/generated
     if svg_code:
