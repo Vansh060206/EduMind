@@ -1418,11 +1418,12 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
     setReviewedCardIds(new Set());
     
     try {
-      let sub = subject;
+      let sub = subject || activeCourse?.subject || activeCourseConfig?.subject || "Science";
       if (sub === "Maths") sub = "Mathematics";
+      const cleanTopic = topic || activeLesson?.topic || activeLesson?.title || "General Concepts";
       
       const res = await api.post("/courses/generate-flashcards", {
-        topic: topic,
+        topic: cleanTopic,
         subject: sub,
         num_cards: 6
       });

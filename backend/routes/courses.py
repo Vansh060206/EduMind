@@ -673,12 +673,14 @@ Output ONLY valid, clean XML SVG code starting with '<svg' and ending with '</sv
     return {"svg": svg_code}
 
 class FlashcardRequest(BaseModel):
-    topic: str
-    subject: str
+    topic: str = None
+    subject: str = None
     num_cards: int = 6
 
 def get_fallback_flashcards(subject: str, topic: str, num_cards: int) -> dict:
-    topic_lower = topic.lower()
+    subject_str = str(subject or "Science")
+    topic_str = str(topic or "General Concepts")
+    topic_lower = topic_str.lower()
     
     if "torque" in topic_lower:
         cards = [
@@ -706,18 +708,18 @@ def get_fallback_flashcards(subject: str, topic: str, num_cards: int) -> dict:
         ]
     else:
         cards = [
-            {"front": f"Define the core goal of studying {topic}.", "back": f"Studying {topic} helps master the fundamental principles of Class 11-12 {subject} necessary for competitive exams like JEE & NEET."},
-            {"front": f"What is a key formula associated with {topic}?", "back": "Check the textbook derivations to practice resolving vectors, units, and structural equations related to this section."},
-            {"front": f"Why is active recall important for {topic}?", "back": "Active recall forces the brain to retrieve information, strengthening synaptic connections and long-term memory retrieval under exam pressure."},
-            {"front": f"How does {topic} connect to prior Class 11/12 chapters?", "back": f"Concepts in {topic} build on foundation mechanics/dynamics in {subject} to explain complex systems and physical/chemical interactions."},
-            {"front": f"State a common trick for solving numericals in {topic}.", "back": "Always sketch free-body diagrams or reaction coordinate structures first. Ensure units are converted to standard SI format before computing."}
+            {"front": f"Define the core goal of studying {topic_str}.", "back": f"Studying {topic_str} helps master the fundamental principles of Class 11-12 {subject_str} necessary for competitive exams like JEE & NEET."},
+            {"front": f"What is a key formula associated with {topic_str}?", "back": "Check the textbook derivations to practice resolving vectors, units, and structural equations related to this section."},
+            {"front": f"Why is active recall important for {topic_str}?", "back": "Active recall forces the brain to retrieve information, strengthening synaptic connections and long-term memory retrieval under exam pressure."},
+            {"front": f"How does {topic_str} connect to prior Class 11/12 chapters?", "back": f"Concepts in {topic_str} build on foundation mechanics/dynamics in {subject_str} to explain complex systems and physical/chemical interactions."},
+            {"front": f"State a common trick for solving numericals in {topic_str}.", "back": "Always sketch free-body diagrams or reaction coordinate structures first. Ensure units are converted to standard SI format before computing."}
         ]
     
     for idx, card in enumerate(cards):
         card["id"] = f"fc_{idx+1}"
         
     return {
-        "topic": topic,
+        "topic": topic_str,
         "flashcards": cards[:num_cards]
     }
 
@@ -727,13 +729,17 @@ async def generate_flashcards(data: FlashcardRequest):
     import requests
     import json
     
+    topic = data.topic or "General Concepts"
+    subject = data.subject or "Science"
+    num_cards = data.num_cards or 6
+    
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         logger.warning("GROQ_API_KEY is not defined in .env, using local fallback for flashcards.")
-        return get_fallback_flashcards(data.subject, data.topic, data.num_cards)
+        return get_fallback_flashcards(subject, topic, num_cards)
         
     prompt = f"""
-You are Professor ARIA, a genius AI Science Tutor. Generate a set of exactly {data.num_cards} interactive flashcards for Class 11-12 {data.subject} active-recall revision targeting the topic: "{data.topic}".
+You are Professor ARIA, a genius AI Science Tutor. Generate a set of exactly {num_cards} interactive flashcards for Class 11-12 {subject} active-recall revision targeting the topic: "{topic}".
 
 Each flashcard must have:
 - "front": A concise, clear question, conceptual puzzle, or formula completion prompt.
@@ -741,7 +747,7 @@ Each flashcard must have:
 
 Return a raw, valid JSON object matching the following structure:
 {{
-  "topic": "{data.topic}",
+  "topic": "{topic}",
   "flashcards": [
     {{
       "id": "fc_1",
@@ -759,14 +765,17 @@ Guidelines:
 - Ensure IDs are unique (e.g. fc_1, fc_2, etc.).
 """
 
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    url = "https://api.groq.com/openai/v1/chat/completions"
+
+    # Try primary model
+    model_name = "llama-3.3-70b-versatile"
     try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": model_name,
             "messages": [
                 {
                     "role": "system",
@@ -790,11 +799,41 @@ Guidelines:
                 card["id"] = f"fc_{i+1}"
             return parsed_data
         else:
-            logger.warning(f"Groq API returned error {res.status_code}: {res.text}. Using fallback flashcards.")
-            return get_fallback_flashcards(data.subject, data.topic, data.num_cards)
-    except Exception as e:
-        logger.warning(f"Failed to query Groq API for flashcards: {str(e)}. Using fallback.")
-        return get_fallback_flashcards(data.subject, data.topic, data.num_cards)
+            raise Exception(f"Primary model returned status {res.status_code}: {res.text}")
+    except Exception as primary_err:
+        logger.warning(f"Primary model {model_name} failed: {primary_err}. Trying backup model (llama-3.1-8b-instant)...")
+        backup_model = "llama-3.1-8b-instant"
+        try:
+            payload = {
+                "model": backup_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a specialized JSON generator. You output only raw, valid JSON. Never output any introductory text, markdown code blocks, explanation or commentary."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.5,
+                "max_tokens": 1000
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=15)
+            if res.status_code == 200:
+                res_data = res.json()
+                answer_text = res_data["choices"][0]["message"]["content"]
+                parsed_data = json.loads(answer_text)
+                for i, card in enumerate(parsed_data.get("flashcards", [])):
+                    card["id"] = f"fc_{i+1}"
+                return parsed_data
+            else:
+                logger.warning(f"Backup model returned status {res.status_code}: {res.text}. Using fallback flashcards.")
+                return get_fallback_flashcards(subject, topic, num_cards)
+        except Exception as backup_err:
+            logger.warning(f"Backup model also failed to query: {backup_err}. Using fallback flashcards.")
+            return get_fallback_flashcards(subject, topic, num_cards)
 
 def get_subject_meta(subject: str):
     sub = subject.lower()
