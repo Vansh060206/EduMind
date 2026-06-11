@@ -479,8 +479,8 @@ export default function Courses() {
   const [formulaQuery, setFormulaQuery] = useState("");
 
   // Fetch courses, enrollments, and local progress
-  const loadData = async (resolvedStudentId = null) => {
-    const activeStudentId = resolvedStudentId || studentId;
+  const loadData = async (resolvedStudentId = null, silent = false) => {
+    const activeStudentId = resolvedStudentId || studentId || JSON.parse(localStorage.getItem("edumind_user") || "{}").id;
     if (!activeStudentId) {
       console.warn("[EduMind Diagnostics] Courses activeStudentId is missing, returning early.");
       return;
@@ -488,7 +488,9 @@ export default function Courses() {
     console.log("[EduMind Diagnostics] Courses activeStudentId:", activeStudentId);
 
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       
       // 1. Fetch courses from backend API
       const coursesRes = await api.get("/courses");
@@ -695,6 +697,13 @@ export default function Courses() {
       // Post to backend enroll endpoint
       await api.post(`/courses/${courseId}/enroll?student_id=${activeStudentId}`);
       
+      // Optimistic update of local enrollment state
+      const newEnroll = { course_id: courseId, student_id: activeStudentId };
+      setEnrollments(prev => {
+        if (prev.some(e => e.course_id === courseId)) return prev;
+        return [...prev, newEnroll];
+      });
+
       toast.success("Enrolled successfully! Welcome to the course.");
       localStorage.removeItem("edumind_new_user");
       
@@ -727,6 +736,14 @@ export default function Courses() {
           student_id: activeStudentId,
           course_id: courseId
         });
+
+        // Optimistic update of local enrollment state
+        const newEnroll = { course_id: courseId, student_id: activeStudentId };
+        setEnrollments(prev => {
+          if (prev.some(e => e.course_id === courseId)) return prev;
+          return [...prev, newEnroll];
+        });
+
         toast.success("Enrolled successfully! (Direct Fallback)");
         localStorage.removeItem("edumind_new_user");
         
@@ -1001,7 +1018,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
     setActiveLessonId(null);
     setIsTimerRunning(false);
     setTimerSeconds(0);
-    loadData(); // Reload to refresh progress circles in catalog
+    loadData(null, true); // Reload silently in the background to refresh progress circles in catalog
   };
 
   // Search filter across all courses
