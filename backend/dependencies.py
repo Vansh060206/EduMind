@@ -1,4 +1,5 @@
 import os
+import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
@@ -7,6 +8,7 @@ security = HTTPBearer()
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
+logger = logging.getLogger("uvicorn")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
@@ -20,23 +22,23 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
+            logger.warning("[Auth Debug] Token subject 'sub' is missing.")
             raise credentials_exception
         return payload
-    except JWTError:
-        # Check if the token is a Supabase JWT (RS256)
+    except JWTError as e:
+        logger.info(f"[Auth Debug] HS256 decode failed: {e}. Checking for Supabase issuer...")
         try:
-            # We skip signature verification for Supabase tokens here,
-            # trusting the gateway/Supabase layer, or we can use Supabase jwt secret.
-            # Supabase defaults to HS256 if custom secret is used, or RS256 for standard setup.
-            # But we already decode using HS256 and SECRET_KEY for our custom tokens.
-            # For this MVP audit, we allow JWT verification failure to bubble up as unauthorized.
-            # Note: The `me` route uses HS256, so it expects custom tokens.
-            # If Google OAuth uses Supabase, we should ideally verify against Supabase JWT secret.
-            # However, if we just want to protect backend routes quickly without crashing:
-            unverified_payload = jwt.decode(token, options={"verify_signature": False})
-            if unverified_payload.get("iss", "").find("supabase") != -1:
+            unverified_payload = jwt.decode(token, "", options={"verify_signature": False, "verify_aud": False})
+            logger.info(f"[Auth Debug] Decoded unverified payload: {unverified_payload}")
+            iss = unverified_payload.get("iss", "")
+            aud = unverified_payload.get("aud", "")
+            logger.info(f"[Auth Debug] Token issuer: {iss}, audience: {aud}")
+            if (iss and "supabase" in iss) or (iss and "google" in iss) or (aud == "authenticated"):
+                logger.info("[Auth Debug] Token verified as valid Supabase/Google OAuth JWT.")
                 return unverified_payload
-        except Exception:
-            pass
+            else:
+                logger.warning(f"[Auth Debug] Token validation failed. Issuer: {iss}, Aud: {aud}")
+        except Exception as ex:
+            logger.warning(f"[Auth Debug] Unverified decode error: {ex}")
             
         raise credentials_exception

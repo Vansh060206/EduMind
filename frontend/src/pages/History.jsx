@@ -3,11 +3,11 @@
 // Cohesive dark mode theme with side navigation menu
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Target, Clock, TrendingUp,
   Bell, Settings, LogOut, ChevronRight,
-  Award, Star, ArrowLeft
+  Award, Star, ArrowLeft, Menu
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabase";
@@ -62,6 +62,17 @@ export default function History() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem("edumind_user") || '{"name":"Student"}'));
   const survey = JSON.parse(localStorage.getItem("edumind_survey") || "{}");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   
   const [quizResults, setQuizResults] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -128,81 +139,114 @@ export default function History() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "#030014" }}>
+    <div className="flex h-screen overflow-hidden relative" style={{ background: "#030014" }}>
       
+      {/* Mobile Sidebar Toggle Overlay */}
+      {isMobile && isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* ── SIDEBAR ── */}
-      <motion.aside
-        initial={{ x: -80, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.5 }}
-        className="w-64 flex-shrink-0 flex flex-col p-5 border-r"
-        style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}
-      >
-        <div className="flex items-center gap-2.5 mb-8 px-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
-            style={{ background: "linear-gradient(135deg,#7c3aed,#06b6d4)" }}>⚡</div>
-          <span className="text-xl font-black" style={{
-            fontFamily: "Poppins",
-            background: "linear-gradient(90deg,#a855f7,#06b6d4)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}>EduMind</span>
-        </div>
-
-        <nav className="flex flex-col gap-1 flex-1">
-          {NAV.map((item, i) => (
-            <motion.button
-              key={i}
-              whileHover={{ x: 4 }}
-              onClick={() => {
-                if (item.label === "Dashboard") navigate("/dashboard");
-                if (item.label === "Ask ARIA") navigate("/ask-aria");
-                if (item.label === "Mock Tests") navigate("/mock-tests");
-                if (item.label === "Courses") navigate("/courses");
-                if (item.label === "Planner") navigate("/planner");
-                if (item.label === "Physics Lab") navigate("/physics-lab");
-                if (item.label === "Chem Lab") navigate("/chem-lab");
-                if (item.label === "Analytics") navigate("/analytics");
-                if (item.label === "History") navigate("/history");
-              }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all"
-              style={{
-                background: item.active ? "rgba(168,85,247,0.15)" : "transparent",
-                color: item.active ? "#c084fc" : "rgba(255,255,255,0.45)",
-                border: item.active ? "1px solid rgba(168,85,247,0.25)" : "1px solid transparent",
-              }}
-            >
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-              {item.active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400" />}
-            </motion.button>
-          ))}
-        </nav>
-
-        <div className="mt-4 p-3 rounded-2xl"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm"
-              style={{ background: "linear-gradient(135deg,#7c3aed,#ec4899)" }}>
-              {currentUser.name?.[0]?.toUpperCase() || "S"}
+      <AnimatePresence>
+        {(!isMobile || isSidebarOpen) && (
+          <motion.aside
+            key="sidebar"
+            initial={isMobile ? { x: -260, opacity: 0 } : { x: -80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={isMobile ? { x: -260, opacity: 0 } : { opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className={`w-64 flex-shrink-0 flex flex-col p-5 border-r ${
+              isMobile ? "fixed inset-y-0 left-0 z-50 h-full shadow-2xl shadow-purple-500/20 bg-[#0a0519]/98" : ""
+            }`}
+            style={{ borderColor: "rgba(255,255,255,0.06)", background: isMobile ? undefined : "rgba(255,255,255,0.02)" }}
+          >
+            <div className="flex items-center gap-2.5 mb-8 px-2">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
+                style={{ background: "linear-gradient(135deg,#7c3aed,#06b6d4)" }}>⚡</div>
+              <span className="text-xl font-black" style={{
+                fontFamily: "Poppins",
+                background: "linear-gradient(90deg,#a855f7,#06b6d4)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}>EduMind</span>
             </div>
-            <div>
-              <p className="text-xs font-semibold text-white">{currentUser.name || "Student"}</p>
-              <p className="text-[10px] text-gray-500 font-semibold tracking-wide">
-                {survey.goal ? survey.goal.toUpperCase() : "JEE ASPIRANT"}
-              </p>
+
+            <nav className="flex flex-col gap-1 flex-1">
+              {NAV.map((item, i) => (
+                <motion.button
+                  key={i}
+                  whileHover={{ x: 4 }}
+                  onClick={() => {
+                    setIsSidebarOpen(false);
+                    if (item.label === "Dashboard") navigate("/dashboard");
+                    if (item.label === "Ask ARIA") navigate("/ask-aria");
+                    if (item.label === "Mock Tests") navigate("/mock-tests");
+                    if (item.label === "Courses") navigate("/courses");
+                    if (item.label === "Planner") navigate("/planner");
+                    if (item.label === "Physics Lab") navigate("/physics-lab");
+                    if (item.label === "Chem Lab") navigate("/chem-lab");
+                    if (item.label === "Analytics") navigate("/analytics");
+                    if (item.label === "History") navigate("/history");
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all"
+                  style={{
+                    background: item.active ? "rgba(168,85,247,0.15)" : "transparent",
+                    color: item.active ? "#c084fc" : "rgba(255,255,255,0.45)",
+                    border: item.active ? "1px solid rgba(168,85,247,0.25)" : "1px solid transparent",
+                  }}
+                >
+                  <span className="text-base">{item.icon}</span>
+                  {item.label}
+                  {item.active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400" />}
+                </motion.button>
+              ))}
+            </nav>
+
+            <div className="mt-4 p-3 rounded-2xl"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm"
+                  style={{ background: "linear-gradient(135deg,#7c3aed,#ec4899)" }}>
+                  {currentUser.name?.[0]?.toUpperCase() || "S"}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-white">{currentUser.name || "Student"}</p>
+                  <p className="text-[10px] text-gray-500 font-semibold tracking-wide">
+                    {survey.goal ? survey.goal.toUpperCase() : "JEE ASPIRANT"}
+                  </p>
+                </div>
+              </div>
+              <button onClick={logout}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-gray-500 hover:text-red-400 transition-colors"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <LogOut size={13} /> Logout
+              </button>
             </div>
-          </div>
-          <button onClick={logout}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-gray-500 hover:text-red-400 transition-colors"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <LogOut size={13} /> Logout
-          </button>
-        </div>
-      </motion.aside>
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
       {/* ── MAIN CONTENT ── */}
-      <main className="flex-1 overflow-y-auto p-6 text-left">
+      <main className="flex-1 overflow-y-auto p-6 text-left relative">
+        {/* Mobile menu trigger */}
+        {isMobile && (
+          <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0a0519]/40 backdrop-blur-md sticky top-0 z-30 -mx-6 -mt-6 mb-6">
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-2 rounded-xl bg-white/5 border border-white/10 text-white flex items-center justify-center"
+              >
+                <Menu size={16} />
+              </button>
+              <span className="text-sm font-black bg-gradient-to-r from-[#a855f7] to-[#06b6d4] bg-clip-text text-transparent" style={{ fontFamily: "Poppins" }}>
+                EduMind
+              </span>
+            </div>
+          </div>
+        )}
         
         {/* Header */}
         <motion.div
@@ -212,10 +256,16 @@ export default function History() {
         >
           <div>
             <button 
-              onClick={() => navigate("/dashboard")}
+              onClick={() => {
+                if (window.history.length > 2) {
+                  navigate(-1);
+                } else {
+                  navigate("/dashboard");
+                }
+              }}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-white transition-all mb-1 font-semibold"
             >
-              <ArrowLeft size={13} /> Back to Dashboard
+              <ArrowLeft size={13} /> Back
             </button>
             <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2" style={{ fontFamily: "Poppins" }}>
               <span>📜</span> Assessment History & ARIA Diagnostics

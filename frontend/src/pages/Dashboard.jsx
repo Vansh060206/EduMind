@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Zap, Target, Clock, TrendingUp,
   Brain, Bell, Settings, LogOut, ChevronRight,
-  Flame, Star, Award
+  Flame, Star, Award, User, Lock, Trophy, Sparkles, Menu
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabase";
@@ -77,8 +77,125 @@ const getUserIdFromToken = (token) => {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem("edumind_user") || '{"name":"Student"}'));
-  const survey = JSON.parse(localStorage.getItem("edumind_survey") || "{}");
+  const [survey, setSurvey] = useState(() => JSON.parse(localStorage.getItem("edumind_survey") || "{}"));
   const [greeting, setGreeting] = useState("Good Morning");
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+  
+  // Settings edit states
+  const [editName, setEditName] = useState("");
+  const [editClass, setEditClass] = useState("");
+  const [editGoal, setEditGoal] = useState("");
+  const [editWeakSubject, setEditWeakSubject] = useState("");
+  const [editMotivation, setEditMotivation] = useState("");
+  const [editTargetHours, setEditTargetHours] = useState(3);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+
+  const getLevelInfo = (xp) => {
+    const lvl = Math.floor(xp / 300) + 1;
+    const progressXp = xp % 300;
+    const nextLvlXp = 300;
+    const pct = Math.round((progressXp / nextLvlXp) * 100);
+    
+    let rankName = "Novice";
+    if (lvl >= 10) rankName = "EduMind Legend 👑";
+    else if (lvl >= 7) rankName = "Grandmaster 🧠";
+    else if (lvl >= 5) rankName = "Expert Tutor ⚡";
+    else if (lvl >= 3) rankName = "Active Scholar 📚";
+    else if (lvl >= 2) rankName = "Rising Star ⭐";
+    
+    return { level: lvl, progressXp, nextLvlXp, percentage: pct, rankName };
+  };
+
+  const openSettings = () => {
+    setEditName(currentUser.name || "Student");
+    setEditClass(survey.class || "12");
+    setEditGoal(survey.goal || "jee");
+    setEditWeakSubject(survey.weak || "physics");
+    setEditMotivation(survey.motivation || "visual");
+    
+    const targetHrs = parseFloat(String(survey.hours || "3").split("-")[0]) || 3;
+    setEditTargetHours(targetHrs);
+    setSettingsError("");
+    setShowSettingsModal(true);
+  };
+
+  const handleSaveSettings = async (e) => {
+    if (e) e.preventDefault();
+    setIsSavingSettings(true);
+    setSettingsError("");
+    
+    try {
+      const updatedSurvey = {
+        ...survey,
+        class: editClass,
+        goal: editGoal,
+        weak: editWeakSubject,
+        hours: `${editTargetHours}-${editTargetHours + 1}`,
+        motivation: editMotivation
+      };
+      
+      const updatedUser = {
+        ...currentUser,
+        name: editName
+      };
+
+      // 1. Save locally
+      localStorage.setItem("edumind_survey", JSON.stringify(updatedSurvey));
+      localStorage.setItem("edumind_user", JSON.stringify(updatedUser));
+      
+      // 2. Update React local state
+      setCurrentUser(updatedUser);
+      setSurvey(updatedSurvey);
+
+      // 3. Make API request to save survey / update profile in DB
+      try {
+        if (currentUser.id && currentUser.email) {
+          await api.post("/auth/survey", {
+            student_id: currentUser.id,
+            email: currentUser.email,
+            name: editName,
+            survey_data: updatedSurvey
+          });
+        }
+      } catch (apiErr) {
+        console.warn("Backend API failed to update profile/survey, falling back to Supabase direct write:", apiErr);
+        // Fallback: Direct write to Supabase if API endpoint is down
+        const { error } = await supabase
+          .from("users")
+          .upsert({
+            id: currentUser.id,
+            name: editName,
+            email: currentUser.email,
+            avatar_url: JSON.stringify(updatedSurvey),
+            role: "student"
+          });
+        if (error) throw error;
+      }
+
+      // 4. Dispatch events to notify other components/pages
+      window.dispatchEvent(new Event("edumind_db_sync"));
+      window.dispatchEvent(new Event("edumind_xp_update"));
+
+      setShowSettingsModal(false);
+    } catch (err) {
+      console.error("Failed to save profile settings:", err);
+      setSettingsError(err.message || "An error occurred while saving. Please try again.");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   const getGoalLabel = (goal) => {
     switch (goal) {
@@ -378,7 +495,17 @@ export default function Dashboard() {
           .slice(0, 3);
 
         const mappedCourses = enrolledCourses.map(e => {
-          const course = e.courses || {};
+          let course = e.courses || {};
+          if (!course.title && e.course_id) {
+            const staticCourse = CURRICULUM[e.course_id];
+            if (staticCourse) {
+              course = {
+                id: e.course_id,
+                title: staticCourse.title,
+                subject: staticCourse.subject
+              };
+            }
+          }
           const courseConfig = CURRICULUM[course.id];
           
           let progress = 0;
@@ -498,7 +625,10 @@ export default function Dashboard() {
   }, [currentUser.id, isNewUser]);
 
   useEffect(() => {
-    const handleRefresh = () => loadDashboardData();
+    const handleRefresh = () => {
+      loadDashboardData();
+      setSurvey(JSON.parse(localStorage.getItem("edumind_survey") || "{}"));
+    };
     window.addEventListener("edumind_db_sync", handleRefresh);
     return () => {
       window.removeEventListener("edumind_db_sync", handleRefresh);
@@ -648,84 +778,117 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "#030014" }}>
+    <div className="flex h-screen overflow-hidden relative" style={{ background: "#030014" }}>
+
+      {/* Mobile Sidebar Toggle Overlay */}
+      {isMobile && isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
       {/* ── SIDEBAR ── */}
-      <motion.aside
-        initial={{ x: -80, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.5 }}
-        className="w-64 flex-shrink-0 flex flex-col p-5 border-r"
-        style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 mb-8 px-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
-            style={{ background: "linear-gradient(135deg,#7c3aed,#06b6d4)" }}>⚡</div>
-          <span className="text-xl font-black" style={{
-            fontFamily: "Poppins",
-            background: "linear-gradient(90deg,#a855f7,#06b6d4)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}>EduMind</span>
-        </div>
-
-        {/* Nav items */}
-        <nav className="flex flex-col gap-1 flex-1">
-          {NAV.map((item, i) => (
-            <motion.button
-              key={i}
-              whileHover={{ x: 4 }}
-              onClick={() => {
-                if (item.label === "Dashboard") navigate("/dashboard");
-                if (item.label === "Ask ARIA") navigate("/ask-aria");
-                if (item.label === "Mock Tests") navigate("/mock-tests");
-                if (item.label === "Courses") navigate("/courses");
-                if (item.label === "Planner") navigate("/planner");
-                if (item.label === "Physics Lab") navigate("/physics-lab");
-                if (item.label === "Chem Lab") navigate("/chem-lab");
-                if (item.label === "History") navigate("/history");
-                if (item.label === "Analytics") navigate("/analytics");
-              }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all"
-              style={{
-                background: item.active ? "rgba(168,85,247,0.15)" : "transparent",
-                color: item.active ? "#c084fc" : "rgba(255,255,255,0.45)",
-                border: item.active ? "1px solid rgba(168,85,247,0.25)" : "1px solid transparent",
-              }}
-            >
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-              {item.active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400" />}
-            </motion.button>
-          ))}
-        </nav>
-
-        {/* User card at bottom */}
-        <div className="mt-4 p-3 rounded-2xl"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm"
-              style={{ background: "linear-gradient(135deg,#7c3aed,#ec4899)" }}>
-              {currentUser.name?.[0]?.toUpperCase() || "S"}
+      <AnimatePresence>
+        {(!isMobile || isSidebarOpen) && (
+          <motion.aside
+            key="sidebar"
+            initial={isMobile ? { x: -260, opacity: 0 } : { x: -80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={isMobile ? { x: -260, opacity: 0 } : { opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className={`w-64 flex-shrink-0 flex flex-col p-5 border-r ${
+              isMobile ? "fixed inset-y-0 left-0 z-50 h-full shadow-2xl shadow-purple-500/20 bg-[#0a0519]/98" : ""
+            }`}
+            style={{ borderColor: "rgba(255,255,255,0.06)", background: isMobile ? undefined : "rgba(255,255,255,0.02)" }}
+          >
+            {/* Logo */}
+            <div className="flex items-center gap-2.5 mb-8 px-2">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
+                style={{ background: "linear-gradient(135deg,#7c3aed,#06b6d4)" }}>⚡</div>
+              <span className="text-xl font-black" style={{
+                fontFamily: "Poppins",
+                background: "linear-gradient(90deg,#a855f7,#06b6d4)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}>EduMind</span>
             </div>
-            <div>
-              <p className="text-xs font-semibold text-white">{currentUser.name || "Student"}</p>
-              <p className="text-[10px] text-gray-500 font-semibold tracking-wide">
-                {survey.goal ? getGoalLabel(survey.goal).toUpperCase() : "JEE ASPIRANT"}
-              </p>
+
+            {/* Nav items */}
+            <nav className="flex flex-col gap-1 flex-1">
+              {NAV.map((item, i) => (
+                <motion.button
+                  key={i}
+                  whileHover={{ x: 4 }}
+                  onClick={() => {
+                    setIsSidebarOpen(false);
+                    if (item.label === "Dashboard") navigate("/dashboard");
+                    if (item.label === "Ask ARIA") navigate("/ask-aria");
+                    if (item.label === "Mock Tests") navigate("/mock-tests");
+                    if (item.label === "Courses") navigate("/courses");
+                    if (item.label === "Planner") navigate("/planner");
+                    if (item.label === "Physics Lab") navigate("/physics-lab");
+                    if (item.label === "Chem Lab") navigate("/chem-lab");
+                    if (item.label === "History") navigate("/history");
+                    if (item.label === "Analytics") navigate("/analytics");
+                  }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-all"
+                  style={{
+                    background: item.active ? "rgba(168,85,247,0.15)" : "transparent",
+                    color: item.active ? "#c084fc" : "rgba(255,255,255,0.45)",
+                    border: item.active ? "1px solid rgba(168,85,247,0.25)" : "1px solid transparent",
+                  }}
+                >
+                  <span className="text-base">{item.icon}</span>
+                  {item.label}
+                  {item.active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-400" />}
+                </motion.button>
+              ))}
+            </nav>
+
+            {/* User card at bottom */}
+            <div className="mt-4 p-3 rounded-2xl"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm"
+                  style={{ background: "linear-gradient(135deg,#7c3aed,#ec4899)" }}>
+                  {currentUser.name?.[0]?.toUpperCase() || "S"}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-white">{currentUser.name || "Student"}</p>
+                  <p className="text-[10px] text-gray-500 font-semibold tracking-wide">
+                    {survey.goal ? getGoalLabel(survey.goal).toUpperCase() : "JEE ASPIRANT"}
+                  </p>
+                </div>
+              </div>
+              <button onClick={logout}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-gray-500 hover:text-red-400 transition-colors"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <LogOut size={13} /> Logout
+              </button>
             </div>
-          </div>
-          <button onClick={logout}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs text-gray-500 hover:text-red-400 transition-colors"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <LogOut size={13} /> Logout
-          </button>
-        </div>
-      </motion.aside>
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
       {/* ── MAIN CONTENT ── */}
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto p-6 relative">
+        {/* Mobile menu trigger */}
+        {isMobile && (
+          <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0a0519]/40 backdrop-blur-md sticky top-0 z-30 -mx-6 -mt-6 mb-6">
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-2 rounded-xl bg-white/5 border border-white/10 text-white flex items-center justify-center"
+              >
+                <Menu size={16} />
+              </button>
+              <span className="text-sm font-black bg-gradient-to-r from-[#a855f7] to-[#06b6d4] bg-clip-text text-transparent" style={{ fontFamily: "Poppins" }}>
+                EduMind
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <motion.div
@@ -762,7 +925,7 @@ export default function Dashboard() {
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
               <Bell size={16} className="text-gray-400" />
             </button>
-            <button className="w-9 h-9 rounded-xl flex items-center justify-center"
+            <button onClick={openSettings} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors"
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
               <Settings size={16} className="text-gray-400" />
             </button>
@@ -770,7 +933,7 @@ export default function Dashboard() {
         </motion.div>
  
         {/* ── STATS ROW ── */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {displayStats.map((s, i) => (
             <motion.div
               key={i}
@@ -794,7 +957,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── MIDDLE ROW ── */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
 
           {/* ML ARIA suggestion */}
           <motion.div
@@ -937,7 +1100,10 @@ export default function Dashboard() {
             <Card style={{ height: "100%", display: "flex", flexDirection: "column", background: "rgba(10, 5, 25, 0.95)", border: "1px solid rgba(255, 255, 255, 0.07)", padding: "24px" }}>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: "Poppins" }}>My Courses</h2>
-                <button className="text-xs text-[#a855f7] hover:text-[#c084fc] font-semibold flex items-center gap-1 transition-all">
+                <button 
+                  onClick={() => navigate("/courses")}
+                  className="text-xs text-[#a855f7] hover:text-[#c084fc] font-semibold flex items-center gap-1 transition-all"
+                >
                   View All <ChevronRight size={12} className="mt-[1px]" />
                 </button>
               </div>
@@ -952,7 +1118,7 @@ export default function Dashboard() {
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.4 + i * 0.07 }}
                         whileHover={{ y: -2, scale: 1.01 }}
-                        onClick={() => navigate("/courses")}
+                        onClick={() => navigate(`/courses?courseId=${c.id}`)}
                         className="p-5 rounded-[18px] cursor-pointer transition-all flex flex-col justify-between"
                         style={{
                           background: `linear-gradient(135deg, ${c.color}0a, rgba(255,255,255,0.01))`,
@@ -1010,7 +1176,7 @@ export default function Dashboard() {
 
 
         {/* ── BOTTOM ROW ── */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
           {/* Today's targets */}
           <Card>
@@ -1235,6 +1401,337 @@ export default function Dashboard() {
               >
                 Keep the Fire Burning! 🔥
               </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Profile Details & Settings Modal Overlay */}
+      <AnimatePresence>
+        {showSettingsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md overflow-y-auto py-10 px-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 30, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 30, opacity: 0 }}
+              transition={{ type: "spring", damping: 20, stiffness: 150 }}
+              className="relative max-w-4xl w-full rounded-3xl border overflow-hidden grid grid-cols-1 md:grid-cols-12 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] text-left"
+              style={{
+                background: "linear-gradient(135deg, rgba(20, 10, 45, 0.96), rgba(8, 4, 20, 0.99))",
+                borderColor: "rgba(168, 85, 247, 0.25)",
+              }}
+            >
+              {/* Left Column: Form (7 columns) */}
+              <div className="col-span-1 md:col-span-7 p-6 md:p-8 border-b md:border-b-0 md:border-r border-white/5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-purple-500/10 border border-purple-500/20 text-purple-400">
+                      <Settings size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-white" style={{ fontFamily: "Poppins" }}>Profile & Settings</h2>
+                      <p className="text-xs text-gray-400">Customize your exam preferences & daily targets</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSaveSettings} className="space-y-5">
+                    {/* Name Input */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-2">Display Name</label>
+                      <div className="relative">
+                        <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                        <input
+                          type="text"
+                          required
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all"
+                          placeholder="Enter your name"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Class level Grid */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-2">Class Year / Level</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: "11", label: "Class 11" },
+                          { id: "12", label: "Class 12" },
+                          { id: "dropper", label: "Dropper Batch" }
+                        ].map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => setEditClass(c.id)}
+                            className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                              editClass === c.id
+                                ? "bg-purple-500/20 border-purple-500/50 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+                                : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                            }`}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Goal Grid */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-2">Target Exam</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: "jee", label: "JEE Exam" },
+                          { id: "neet", label: "NEET UG" },
+                          { id: "boards", label: "Boards" }
+                        ].map((g) => (
+                          <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => setEditGoal(g.id)}
+                            className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                              editGoal === g.id
+                                ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                                : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                            }`}
+                          >
+                            {g.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Weak Focus Area Grid */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-2">Weak Subject (AI Diagnostic Focus)</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { id: "physics", label: "Physics" },
+                          { id: "chemistry", label: "Chemistry" },
+                          { id: "maths", label: "Maths" },
+                          { id: "biology", label: "Biology" }
+                        ].map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setEditWeakSubject(s.id)}
+                            className={`py-2 px-1 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer ${
+                              editWeakSubject === s.id
+                                ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-200 shadow-[0_0_15px_rgba(52,211,153,0.15)]"
+                                : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Target hours Slider */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider">Daily Study Target</label>
+                        <span className="text-xs font-bold text-purple-300 font-mono bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-lg">
+                          {editTargetHours} Hours
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={editTargetHours}
+                        onChange={(e) => setEditTargetHours(Number(e.target.value))}
+                        className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                        style={{
+                          background: `linear-gradient(to right, #a855f7 0%, #a855f7 ${(editTargetHours - 1) * 11.11}%, rgba(255,255,255,0.1) ${(editTargetHours - 1) * 11.11}%, rgba(255,255,255,0.1) 100%)`
+                        }}
+                      />
+                      <div className="flex justify-between text-[10px] text-gray-500 mt-1 font-semibold">
+                        <span>1 Hr</span>
+                        <span>5 Hrs</span>
+                        <span>10 Hrs</span>
+                      </div>
+                    </div>
+
+                    {settingsError && (
+                      <p className="text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl text-center">
+                        {settingsError}
+                      </p>
+                    )}
+                  </form>
+                </div>
+
+                <div className="flex items-center gap-3 mt-6 pt-4 border-t border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setShowSettingsModal(false)}
+                    className="flex-1 py-2.5 rounded-xl text-xs font-bold text-gray-400 hover:text-white bg-white/5 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveSettings}
+                    disabled={isSavingSettings}
+                    className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_20px_rgba(168,85,247,0.3)] hover:shadow-[0_0_30px_rgba(168,85,247,0.5)] border border-purple-400/30"
+                    style={{
+                      background: "linear-gradient(135deg, #a855f7, #06b6d4)",
+                    }}
+                  >
+                    {isSavingSettings ? (
+                      <>
+                        <div className="w-3.5 h-3.5 rounded-full border-2 border-t-white border-r-transparent animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>Save Preferences</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Column: Gamification Hub (5 columns) */}
+              <div className="col-span-1 md:col-span-5 p-6 md:p-8 flex flex-col justify-between relative" style={{ background: "rgba(255, 255, 255, 0.02)" }}>
+                {/* Background glow effects */}
+                <div className="absolute top-1/4 right-0 w-32 h-32 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
+                <div className="absolute bottom-1/4 left-0 w-32 h-32 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
+
+                <div className="relative z-10 space-y-6">
+                  {/* Avatar & Header */}
+                  <div className="flex items-center gap-3.5 p-3 rounded-2xl border bg-white/5" style={{ borderColor: "rgba(255, 255, 255, 0.05)" }}>
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg relative text-white"
+                      style={{ background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}>
+                      {editName?.[0]?.toUpperCase() || currentUser.name?.[0]?.toUpperCase() || "S"}
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-black flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white leading-tight">{editName || currentUser.name || "Student"}</p>
+                      <p className="text-[10px] text-gray-400 font-semibold mt-0.5 tracking-wide uppercase">
+                        {getLevelInfo((dashboardData.quizzesCount * 100) + (dashboardData.coursesCount * 50) + dailyXp).rankName}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Level & XP Progression Card */}
+                  <div className="p-4 rounded-2xl border bg-white/5 space-y-3" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] font-extrabold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                        <Trophy size={12} className="text-cyan-400" /> Rank Level
+                      </span>
+                      <span className="text-[11px] font-extrabold text-purple-400 font-mono uppercase tracking-wider">
+                        Level {getLevelInfo((dashboardData.quizzesCount * 100) + (dashboardData.coursesCount * 50) + dailyXp).level}
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <p className="text-2xl font-black text-white leading-none">
+                          {(dashboardData.quizzesCount * 100) + (dashboardData.coursesCount * 50) + dailyXp}
+                          <span className="text-[11px] text-gray-500 font-medium ml-1 font-sans">Lifetime XP</span>
+                        </p>
+                      </div>
+                      <p className="text-[10px] text-gray-500 font-bold font-mono">
+                        {getLevelInfo((dashboardData.quizzesCount * 100) + (dashboardData.coursesCount * 50) + dailyXp).progressXp} / 300 XP
+                      </p>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
+                      <motion.div
+                        className="h-full rounded-full bg-gradient-to-r from-purple-500 via-indigo-500 to-cyan-400 shadow-[0_0_10px_rgba(124,58,237,0.5)]"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${getLevelInfo((dashboardData.quizzesCount * 100) + (dashboardData.coursesCount * 50) + dailyXp).percentage}%` }}
+                        transition={{ duration: 0.8 }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Streak & Study Target Side-by-Side */}
+                  <div className="grid grid-cols-2 gap-3 text-left">
+                    <div className="p-3 rounded-2xl border bg-white/5 flex items-center gap-2.5" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-amber-500/10">
+                        <Flame size={16} className="text-amber-400 fill-amber-400/20" />
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Streak</p>
+                        <p className="text-xs font-black text-amber-400">{activeStreakCount} Days</p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-2xl border bg-white/5 flex items-center gap-2.5" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-cyan-500/10">
+                        <Clock size={16} className="text-cyan-400" />
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Study Today</p>
+                        <p className="text-xs font-black text-cyan-400">{(liveStudySeconds / 3600).toFixed(1)} hrs</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Achievements Badge Grid */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Award size={13} className="text-purple-400" /> Achievements Unlocked
+                      </span>
+                      <span className="text-[10px] font-mono font-black text-purple-300">
+                        {[
+                          true, // Fresh Recruit
+                          dashboardData.quizzesCount >= 1, // First Milestone
+                          dashboardData.quizzesCount >= 5, // Scholar Ascent
+                          activeStreakCount >= 3, // Daily Devotee
+                          dashboardData.coursesCount >= 2, // Multi-Disciplinary
+                          (liveStudySeconds / 3600) >= 5 || dashboardData.studyHours >= 5 // Focus Champion
+                        ].filter(Boolean).length} / 6
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { icon: "🌱", label: "Fresh Recruit", desc: "Joined EduMind", earned: true },
+                        { icon: "🎯", label: "Quiz Starter", desc: "First quiz completed", earned: dashboardData.quizzesCount >= 1 },
+                        { icon: "📚", label: "Scholar", desc: "Completed 5+ quizzes", earned: dashboardData.quizzesCount >= 5 },
+                        { icon: "🔥", label: "Dedicated", desc: "Active 3+ day streak", earned: activeStreakCount >= 3 },
+                        { icon: "🧬", label: "Polymath", desc: "Enrolled in 2+ courses", earned: dashboardData.coursesCount >= 2 },
+                        { icon: "⚡", label: "Deep Worker", desc: "Studied 5+ total hours", earned: (liveStudySeconds / 3600) >= 5 || dashboardData.studyHours >= 5 }
+                      ].map((badge, idx) => (
+                        <div
+                          key={idx}
+                          className={`group relative p-2 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
+                            badge.earned
+                              ? "bg-purple-950/20 border-purple-500/20 hover:border-purple-500/40 hover:scale-[1.03] shadow-[0_0_10px_rgba(168,85,247,0.05)]"
+                              : "bg-white/[0.02] border-white/5 opacity-40 hover:opacity-50"
+                          }`}
+                        >
+                          <span className="text-xl mb-1">{badge.earned ? badge.icon : "🔒"}</span>
+                          <span className="text-[9px] font-bold text-gray-300 truncate max-w-full">{badge.label}</span>
+                          
+                          {/* Tooltip */}
+                          <div className="absolute bottom-full mb-2 hidden group-hover:block w-32 bg-black/90 border border-white/10 rounded-lg p-1.5 text-[8px] leading-snug text-gray-300 shadow-xl z-20 pointer-events-none">
+                            <p className="font-bold text-white">{badge.label}</p>
+                            <p className="mt-0.5 text-gray-400">{badge.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative z-10 flex items-center justify-between text-[10px] text-gray-500 font-semibold pt-4 mt-4 border-t border-white/5">
+                  <span className="flex items-center gap-1">
+                    <Sparkles size={10} className="text-purple-400" />
+                    AI Diagnostic Active
+                  </span>
+                  <span>v1.2.0</span>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Brain, Send, Sparkles, Clock, Target, 
   ChevronRight, BookOpen, Trash2, ArrowLeft, RefreshCw,
-  Image as ImageIcon, Camera, X, Paperclip, File, Folder
+  Image as ImageIcon, Camera, X, Paperclip, File, Folder, Menu
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
@@ -97,6 +97,17 @@ const FLOATING_DECO = [
 export default function AskAria() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem("edumind_user") || '{"name":"Student"}');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   
   const [question, setQuestion] = useState("");
   const [subject, setSubject] = useState("Physics");
@@ -714,81 +725,106 @@ export default function AskAria() {
         </motion.div>
       ))}
 
+      {/* Mobile Sidebar Toggle Overlay */}
+      {isMobile && isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* ── LEFT COLUMN: SIDEBAR ── */}
-      <motion.aside
-        initial={{ x: -80, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.5 }}
-        className="w-80 flex-shrink-0 flex flex-col p-5 border-r"
-        style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.01)", backdropFilter: "blur(16px)" }}
-      >
-        {/* Back navigation header */}
-        <div className="flex items-center justify-between mb-6">
-          <button 
-            onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-white transition-colors"
+      <AnimatePresence>
+        {(!isMobile || isSidebarOpen) && (
+          <motion.aside
+            key="sidebar"
+            initial={isMobile ? { x: -260, opacity: 0 } : { x: -80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={isMobile ? { x: -260, opacity: 0 } : { opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className={`w-80 flex-shrink-0 flex flex-col p-5 border-r ${
+              isMobile ? "fixed inset-y-0 left-0 z-50 h-full shadow-2xl shadow-purple-500/20 bg-[#0a0519]/98" : ""
+            }`}
+            style={{ borderColor: "rgba(255,255,255,0.06)", background: isMobile ? undefined : "rgba(255,255,255,0.01)", backdropFilter: "blur(16px)" }}
           >
-            <ArrowLeft size={14} /> Back to Dashboard
-          </button>
-          <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-        </div>
-
-        {/* Sidebar Title */}
-        <div className="mb-4">
-          <h2 className="text-sm font-bold text-white tracking-wider flex items-center gap-1.5">
-            <Clock size={14} className="text-purple-400" />
-            Doubt History
-          </h2>
-          <p className="text-[10px] text-gray-500 mt-0.5">Access previous conversations with ARIA</p>
-        </div>
-
-        {/* Doubt List */}
-        <div className="flex-1 overflow-y-auto space-y-2.5 pr-1.5 scrollbar-thin">
-          {history.length > 0 ? (
-            history.map((h, i) => {
-              const colors = getSubjectColor(h.subject);
-              const isActive = activeDoubt?.id === h.id || (!activeDoubt && i === 0 && !loading && !question);
-              return (
-                <motion.div
-                  key={h.id || i}
-                  whileHover={{ x: 2, scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
-                  onClick={() => setActiveDoubt(h)}
-                  className="p-3.5 rounded-xl cursor-pointer text-left border transition-all"
-                  style={{
-                    background: isActive ? "rgba(168, 85, 247, 0.1)" : "rgba(255,255,255,0.02)",
-                    borderColor: isActive ? "rgba(168, 85, 247, 0.3)" : "rgba(255,255,255,0.06)"
-                  }}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${colors.text} ${colors.border} ${colors.bg}`}>
-                      {h.subject}
-                    </span>
-                    <span className="text-[8px] text-gray-600 font-mono">
-                      {h.created_at ? (() => {
-                        let createdAtStr = h.created_at;
-                        if (createdAtStr && !createdAtStr.endsWith("Z") && !createdAtStr.includes("+") && !createdAtStr.includes("GMT")) {
-                          createdAtStr = createdAtStr + "Z";
-                        }
-                        return new Date(createdAtStr).toLocaleDateString();
-                      })() : "Just now"}
-                    </span>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-300 line-clamp-2">
-                    {parseQuestionText(h.question).questionContent}
-                  </p>
-                </motion.div>
-              );
-            })
-          ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-center p-4">
-              <BookOpen size={24} className="text-purple-500/30 mb-2 animate-bounce" />
-              <p className="text-xs font-bold text-gray-600">No doubts history</p>
-              <p className="text-[10px] text-gray-700 max-w-[160px] mx-auto mt-1 leading-normal">Your solved queries will accumulate here.</p>
+            {/* Back navigation header */}
+            <div className="flex items-center justify-between mb-6">
+              <button 
+                onClick={() => {
+                  if (window.history.length > 2) {
+                    navigate(-1);
+                  } else {
+                    navigate("/dashboard");
+                  }
+                }}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-white transition-colors"
+              >
+                <ArrowLeft size={14} /> Back
+              </button>
+              <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
             </div>
-          )}
-        </div>
-      </motion.aside>
+
+            {/* Sidebar Title */}
+            <div className="mb-4">
+              <h2 className="text-sm font-bold text-white tracking-wider flex items-center gap-1.5">
+                <Clock size={14} className="text-purple-400" />
+                Doubt History
+              </h2>
+              <p className="text-[10px] text-gray-500 mt-0.5">Access previous conversations with ARIA</p>
+            </div>
+
+            {/* Doubt List */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1.5 scrollbar-thin">
+              {history.length > 0 ? (
+                history.map((h, i) => {
+                  const colors = getSubjectColor(h.subject);
+                  const isActive = activeDoubt?.id === h.id || (!activeDoubt && i === 0 && !loading && !question);
+                  return (
+                    <motion.div
+                      key={h.id || i}
+                      whileHover={{ x: 2, scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={() => {
+                        if (isMobile) setIsSidebarOpen(false);
+                        setActiveDoubt(h);
+                      }}
+                      className="p-3.5 rounded-xl cursor-pointer text-left border transition-all"
+                      style={{
+                        background: isActive ? "rgba(168, 85, 247, 0.1)" : "rgba(255,255,255,0.02)",
+                        borderColor: isActive ? "rgba(168, 85, 247, 0.3)" : "rgba(255,255,255,0.06)"
+                      }}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${colors.text} ${colors.border} ${colors.bg}`}>
+                          {h.subject}
+                        </span>
+                        <span className="text-[8px] text-gray-600 font-mono">
+                          {h.created_at ? (() => {
+                            let createdAtStr = h.created_at;
+                            if (createdAtStr && !createdAtStr.endsWith("Z") && !createdAtStr.includes("+") && !createdAtStr.includes("GMT")) {
+                              createdAtStr = createdAtStr + "Z";
+                            }
+                            return new Date(createdAtStr).toLocaleDateString();
+                          })() : "Just now"}
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold text-gray-300 line-clamp-2">
+                        {parseQuestionText(h.question).questionContent}
+                      </p>
+                    </motion.div>
+                  );
+                })
+              ) : (
+                <div className="h-64 flex flex-col items-center justify-center text-center p-4">
+                  <BookOpen size={24} className="text-purple-500/30 mb-2 animate-bounce" />
+                  <p className="text-xs font-bold text-gray-600">No doubts history</p>
+                  <p className="text-[10px] text-gray-700 max-w-[160px] mx-auto mt-1 leading-normal">Your solved queries will accumulate here.</p>
+                </div>
+              )}
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
       {/* ── RIGHT COLUMN: CHAT CANVAS ── */}
       <main className="flex-1 flex flex-col h-full relative overflow-hidden">
@@ -798,6 +834,14 @@ export default function AskAria() {
           style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}
         >
           <div className="flex items-center gap-3">
+            {isMobile && (
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="mr-1 p-2 rounded-xl bg-white/5 border border-white/10 text-white flex items-center justify-center flex-shrink-0"
+              >
+                <Menu size={16} />
+              </button>
+            )}
             {/* Holographic avatar */}
             <div className="relative w-11 h-11 flex items-center justify-center">
               <motion.div

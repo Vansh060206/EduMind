@@ -5,7 +5,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   ArrowRight, ChevronDown, Sparkles, Brain, FlaskConical,
-  Atom, LineChart, MessageSquare, Star, Zap,
+  Atom, LineChart, MessageSquare, Star, Zap, Mail
 } from "lucide-react";
 import LandingLoader from "../components/landing/LandingLoader";
 import HeroCanvas from "../components/landing/HeroCanvas";
@@ -86,9 +86,44 @@ export default function LandingPage() {
   const [statsVisible, setStatsVisible] = useState(false);
   const [ariaText, setAriaText] = useState("");
   const [ariaIdx, setAriaIdx] = useState(0);
+  const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
   const labRef = useRef(null);
   const pageRef = useRef(null);
   const statsRef = useRef(null);
+
+  // Mouse move listener for dynamic spotlight
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
+  const containerVariants = {
+    hidden: {},
+    visible: {
+      transition: {
+        staggerChildren: 0.15,
+        delayChildren: 0.35,
+      }
+    }
+  };
+
+  const wordVariants = {
+    hidden: { opacity: 0, y: 35, scale: 0.8, rotate: -2 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      rotate: 0,
+      transition: {
+        type: "spring",
+        damping: 13,
+        stiffness: 90
+      }
+    }
+  };
 
   const { scrollYProgress } = useScroll();
   const heroOpacity = useTransform(scrollYProgress, [0, 0.15], [1, 0]);
@@ -188,7 +223,14 @@ export default function LandingPage() {
     <>
       {loading && <LandingLoader onComplete={handleLoaderDone} />}
 
-      <div ref={pageRef} className="landing-page bg-[#030014] text-white overflow-x-hidden" style={{ scrollBehavior: "smooth" }}>
+      <div ref={pageRef} className="landing-page bg-[#030014] text-white overflow-x-hidden relative" style={{ scrollBehavior: "smooth" }}>
+        {/* Dynamic Interactive Cursor Spotlight */}
+        <div
+          className="pointer-events-none fixed inset-0 z-10 transition-all duration-300 ease-out"
+          style={{
+            background: `radial-gradient(550px at ${mousePos.x}px ${mousePos.y}px, rgba(124, 58, 237, 0.08), rgba(6, 182, 212, 0.04), transparent 80%)`
+          }}
+        />
         {/* ── NAV ── */}
         <motion.nav
           initial={{ y: -80, opacity: 0 }}
@@ -251,22 +293,40 @@ export default function LandingPage() {
             </motion.div>
 
             <motion.h1
-              initial={{ opacity: 0, y: 40 }}
-              animate={ready ? { opacity: 1, y: 0 } : {}}
-              transition={{ delay: 0.55, duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+              variants={containerVariants}
+              initial="hidden"
+              animate={ready ? "visible" : "hidden"}
               className="text-4xl sm:text-6xl lg:text-7xl font-black leading-[1.05] mb-6"
               style={{ fontFamily: "Poppins" }}
             >
-              <span className="block text-white">Learn Smarter</span>
+              <span className="block text-white">
+                {["Learn", "Smarter"].map((word) => (
+                  <motion.span
+                    key={word}
+                    variants={wordVariants}
+                    className="inline-block mr-3 sm:mr-4 origin-bottom"
+                  >
+                    {word}
+                  </motion.span>
+                ))}
+              </span>
               <span
-                className="block mt-1"
+                className="block mt-2"
                 style={{
                   background: "linear-gradient(90deg, #a855f7, #06b6d4, #34d399)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                with AI.
+                {["with", "AI."].map((word) => (
+                  <motion.span
+                    key={word}
+                    variants={wordVariants}
+                    className="inline-block mr-3 sm:mr-4 origin-bottom"
+                  >
+                    {word}
+                  </motion.span>
+                ))}
               </span>
             </motion.h1>
 
@@ -625,8 +685,51 @@ export default function LandingPage() {
         </section>
 
         {/* ── FOOTER ── */}
-        <footer className="py-8 px-6 border-t border-white/5 text-center text-xs text-gray-600">
-          <p>© {new Date().getFullYear()} EduMind · Learn Smarter with AI · Class 11–12 · JEE · NEET</p>
+        <footer className="py-12 px-6 border-t border-white/5 bg-[#02000c]/80 backdrop-blur-md relative z-20">
+          <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm"
+                style={{ background: "linear-gradient(135deg,#7c3aed,#06b6d4)" }}>⚡</div>
+              <span className="text-base font-black text-white" style={{ fontFamily: "Poppins" }}>EduMind</span>
+            </div>
+            
+            <div className="flex items-center gap-6">
+              <a
+                href="https://github.com/Vansh060206"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-white/5 border border-white/10 hover:border-purple-500/50 hover:bg-purple-500/10 text-gray-400 hover:text-purple-400 transition-all shadow-[0_0_15px_rgba(255,255,255,0.02)] hover:shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+                title="Github"
+              >
+                <svg className="w-[18px] h-[18px] fill-current" viewBox="0 0 24 24">
+                  <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+                </svg>
+              </a>
+              <a
+                href="https://www.linkedin.com/in/vansh-mankani-9aa1a8316/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-white/5 border border-white/10 hover:border-cyan-500/50 hover:bg-cyan-500/10 text-gray-400 hover:text-cyan-400 transition-all shadow-[0_0_15px_rgba(255,255,255,0.02)] hover:shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                title="LinkedIn"
+              >
+                <svg className="w-[18px] h-[18px] fill-current" viewBox="0 0 24 24">
+                  <path d="M22.23 0H1.77C.8 0 0 .77 0 1.72v20.56C0 23.23.8 24 1.77 24h20.46c.98 0 1.77-.77 1.77-1.72V1.72C24 .77 23.2 0 22.23 0zM7.12 20.45H3.56V9h3.56v11.45zM5.34 7.43c-1.14 0-2.06-.92-2.06-2.06 0-1.14.92-2.06 2.06-2.06 1.14 0 2.06.92 2.06 2.06 0 1.14-.92 2.06-2.06 2.06zm15.11 13.02h-3.56v-5.6c0-1.34-.03-3.05-1.86-3.05-1.86 0-2.14 1.45-2.14 2.95v5.7h-3.56V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29z"/>
+                </svg>
+              </a>
+              <a
+                href="mailto:mankanivansh273@gmail.com"
+                className="w-10 h-10 rounded-full flex items-center justify-center bg-white/5 border border-white/10 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-gray-400 hover:text-emerald-400 transition-all shadow-[0_0_15px_rgba(255,255,255,0.02)] hover:shadow-[0_0_15px_rgba(52,211,153,0.15)]"
+                title="Email"
+              >
+                <Mail size={18} />
+              </a>
+            </div>
+            
+            <div className="text-center md:text-right text-xs text-gray-500 font-medium">
+              <p>© {new Date().getFullYear()} EduMind · Learn Smarter with AI</p>
+              <p className="text-[10px] text-gray-600 mt-1">Class 11–12 · JEE · NEET</p>
+            </div>
+          </div>
         </footer>
       </div>
     </>

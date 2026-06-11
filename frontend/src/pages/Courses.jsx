@@ -16,6 +16,7 @@ import {
   matchCourseWeakTopics,
   prioritizePoolByWeakTopics,
 } from "../utils/studentMetrics";
+import { getLocalCustomFallbackPool } from "../utils/questions";
 import { addDailyXp, incrementDailyCounter } from "../utils/dailyReset";
 
 const getUserIdFromToken = (token) => {
@@ -667,25 +668,32 @@ export default function Courses() {
 
   // Resilient enrollment fetching helper (bypasses offline server)
   const fetchUpdatedEnrollments = async () => {
+    const activeStudentId = studentId || JSON.parse(localStorage.getItem("edumind_user") || "{}").id;
+    if (!activeStudentId) return [];
     try {
-      const enrollmentsRes = await api.get(`/courses/my-courses/${studentId}`);
+      const enrollmentsRes = await api.get(`/courses/my-courses/${activeStudentId}`);
       return enrollmentsRes.data || [];
     } catch (err) {
       const { data: enrollmentsData } = await supabase
         .from("enrollments")
         .select("*")
-        .eq("student_id", studentId);
+        .eq("student_id", activeStudentId);
       return enrollmentsData || [];
     }
   };
 
   // Handle Enrollment
   const handleEnroll = async (courseId) => {
+    const activeStudentId = studentId || JSON.parse(localStorage.getItem("edumind_user") || "{}").id;
+    if (!activeStudentId) {
+      toast.error("Please login to enroll in courses.");
+      return;
+    }
     try {
       setEnrollingId(courseId);
       
       // Post to backend enroll endpoint
-      await api.post(`/courses/${courseId}/enroll?student_id=${studentId}`);
+      await api.post(`/courses/${courseId}/enroll?student_id=${activeStudentId}`);
       
       toast.success("Enrolled successfully! Welcome to the course.");
       localStorage.removeItem("edumind_new_user");
@@ -706,9 +714,9 @@ export default function Courses() {
             lessonIds.push(l.id);
           });
         });
-        const savedCompleted = JSON.parse(localStorage.getItem(`edumind_completed_lessons_${studentId}`) || "[]");
+        const savedCompleted = JSON.parse(localStorage.getItem(`edumind_completed_lessons_${activeStudentId}`) || "[]");
         const updatedCompleted = savedCompleted.filter(id => !lessonIds.includes(id));
-        localStorage.setItem(`edumind_completed_lessons_${studentId}`, JSON.stringify(updatedCompleted));
+        localStorage.setItem(`edumind_completed_lessons_${activeStudentId}`, JSON.stringify(updatedCompleted));
         setCompletedLessons(updatedCompleted);
       }
     } catch (err) {
@@ -716,7 +724,7 @@ export default function Courses() {
       // Fallback direct insert if API isn't responding or has issues
       try {
         await supabase.from("enrollments").insert({
-          student_id: studentId,
+          student_id: activeStudentId,
           course_id: courseId
         });
         toast.success("Enrolled successfully! (Direct Fallback)");
@@ -737,9 +745,9 @@ export default function Courses() {
               lessonIds.push(l.id);
             });
           });
-          const savedCompleted = JSON.parse(localStorage.getItem(`edumind_completed_lessons_${studentId}`) || "[]");
+          const savedCompleted = JSON.parse(localStorage.getItem(`edumind_completed_lessons_${activeStudentId}`) || "[]");
           const updatedCompleted = savedCompleted.filter(id => !lessonIds.includes(id));
-          localStorage.setItem(`edumind_completed_lessons_${studentId}`, JSON.stringify(updatedCompleted));
+          localStorage.setItem(`edumind_completed_lessons_${activeStudentId}`, JSON.stringify(updatedCompleted));
           setCompletedLessons(updatedCompleted);
         }
       } catch (fallbackErr) {
@@ -1468,13 +1476,20 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
       }
 
       // 3. Fetch AI-generated questions focused on weak topics when available
-      const res = await api.post("/tests/generate-custom", {
-        student_id: studentId || "guest",
-        subject: subject,
-        topics: topicsStr
-      });
+      let pool;
+      try {
+        const res = await api.post("/tests/generate-custom", {
+          student_id: studentId || "guest",
+          subject: subject,
+          topics: topicsStr
+        });
+        pool = res.data;
+      } catch (err) {
+        console.warn("Failed to generate quiz from API, using client-side fallback:", err);
+        toast.success("Loaded offline fallback quiz pool.");
+        pool = getLocalCustomFallbackPool(subject, topicsStr);
+      }
       
-      const pool = res.data;
       if (!pool || Object.keys(pool).length === 0) {
         toast.error("Failed to load questions pool for this subject.");
         return;
@@ -1742,10 +1757,16 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
           {/* Header */}
           <header className="flex justify-between items-center mb-10">
             <button 
-              onClick={() => navigate("/dashboard")}
+              onClick={() => {
+                if (window.history.length > 2) {
+                  navigate(-1);
+                } else {
+                  navigate("/dashboard");
+                }
+              }}
               className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-white transition-colors py-2 px-3 rounded-xl bg-white/5 border border-white/5 backdrop-blur-md"
             >
-              <ArrowLeft size={14} /> Back to Dashboard
+              <ArrowLeft size={14} /> Back
             </button>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm"
@@ -1988,7 +2009,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
                               boxShadow: `0 8px 20px -6px ${courseConfig.glowColor}`
                             }}
                           >
-                            <Play size={11} className="fill-white" /> Continue
+                            <Play size={11} className="fill-white" /> Continue Learning
                           </button>
                           <button
                             onClick={() => startAdaptiveQuiz(course.id)}

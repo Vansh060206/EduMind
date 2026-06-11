@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from database import supabase
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Set
 import uuid
 import logging
 from datetime import datetime
@@ -408,6 +408,47 @@ def build_flat_question_lookup() -> Dict[str, Dict[str, Any]]:
                 flat_questions[q["id"]] = q
     return flat_questions
 
+def get_attempted_questions(student_id: str) -> Tuple[Set[str], List[str], List[str]]:
+    attempted_ids = set()
+    attempted_texts = []
+    attempted_topics = set()
+    
+    if not student_id or student_id == "guest":
+        return attempted_ids, attempted_texts, list(attempted_topics)
+        
+    try:
+        # Query mock_tests ordered by taken_at descending to get recent first
+        res = supabase.table("mock_tests") \
+            .select("questions, answers") \
+            .eq("student_id", student_id) \
+            .order("taken_at", desc=True) \
+            .execute()
+            
+        if res.data:
+            for row in res.data:
+                qs = row.get("questions")
+                if qs and isinstance(qs, list):
+                    for q in qs:
+                        if isinstance(q, dict):
+                            q_id = q.get("id")
+                            if q_id:
+                                attempted_ids.add(str(q_id))
+                            q_text = q.get("text")
+                            if q_text and q_text not in attempted_texts:
+                                attempted_texts.append(q_text)
+                            q_topic = q.get("topic")
+                            if q_topic:
+                                attempted_topics.add(q_topic)
+                                
+                ans = row.get("answers")
+                if ans and isinstance(ans, dict):
+                    for q_id in ans.keys():
+                        attempted_ids.add(str(q_id))
+    except Exception as e:
+        logger.warning(f"Could not load attempted questions: {e}")
+        
+    return attempted_ids, attempted_texts, list(attempted_topics)
+
 def topic_matches(candidate: str, target: str) -> bool:
     if not candidate or not target:
         return False
@@ -539,7 +580,7 @@ async def get_weak_topics(student_id: str, subject: str):
         "from_quizzes": quiz_topics,
     }
 
-def get_fallback_custom_pool(subject: str, topics: str = None, weak_topics: List[str] = None) -> Dict[str, Any]:
+def get_fallback_custom_pool(subject: str, topics: str = None, weak_topics: List[str] = None, attempted_ids: Set[str] = None) -> Dict[str, Any]:
     import re
     import string
     if subject not in QUESTION_BANK:
@@ -579,6 +620,11 @@ def get_fallback_custom_pool(subject: str, topics: str = None, weak_topics: List
             if filtered:
                 q_list = filtered
                 
+        if attempted_ids:
+            unattempted = [q for q in q_list if q["id"] not in attempted_ids]
+            if unattempted:
+                q_list = unattempted
+                
         client_pool[diff] = [
             {
                 "id": q["id"],
@@ -594,6 +640,100 @@ def get_fallback_custom_pool(subject: str, topics: str = None, weak_topics: List
         ]
     return prioritize_pool_by_weak_topics(client_pool, weak_topics or [])
 
+def generate_dynamic_mock_pool(subject: str, attempted_texts: List[str], weak_topics: List[str]) -> Dict[str, Any]:
+    import os
+    import requests
+    import json
+    
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        logger.warning("GROQ_API_KEY is not defined, cannot generate dynamic mock pool.")
+        return None
+        
+    avoid_str = ""
+    if attempted_texts:
+        recent_texts = attempted_texts[:20]
+        avoid_str = "\n- CRITICAL NEGATIVE CONSTRAINT: Do NOT generate questions that are identical or extremely similar to the following previously attempted questions:\n" + "\n".join(f"- {txt}" for txt in recent_texts)
+
+    prompt = f"""
+You are Professor ARIA, a genius AI Science Tutor. Generate a standard mock test question pool for Class 11-12 {subject} targeting JEE/NEET exam preparation.
+You must generate exactly 12 unique questions divided into three difficulties: Easy (4 questions), Medium (4 questions), and Hard (4 questions).
+Return a raw, valid JSON object matching the following structure:
+{{
+  "Easy": [
+    {{
+      "id": "custom_dyn_{subject.lower()[:2]}_e_1",
+      "subject": "{subject}",
+      "topic": "Name of specific sub-topic",
+      "difficulty": "Easy",
+      "text": "Detailed question text. Use standard inline LaTeX math ($...$) for formulas and block LaTeX math ($$...$$) for equations if needed.",
+      "solution": "1. Formula: ...\n2. Given: ...\n3. Calculate: ...\n4. Therefore, ... is the correct answer.",
+      "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
+      "correct_index": 0
+    }},
+    ...
+  ],
+  "Medium": [
+    ...
+  ],
+  "Hard": [
+    ...
+  ]
+}}
+
+Guidelines:
+- Return ONLY valid raw JSON. Do not include markdown codeblocks, "```json", or any preamble/postamble.
+- Ensure all keys exist and option arrays have exactly 4 choices.
+- CRITICAL: You must generate the "solution" field BEFORE generating the "options" and "correct_index" fields. First evaluate the correct answer step-by-step in the solution, then write the four options (ensuring the calculated correct answer is present in the list), and finally set the "correct_index" to the index of that option.
+- CRITICAL: The correct_index must point to the EXACT index of the correct answer in the options array.
+- ID must be unique (e.g. custom_dyn_ph_e_1, custom_dyn_ph_m_1, etc. using unique numbers 1 to 4 for each difficulty). They MUST start with the prefix "custom_dyn_" so the grading system processes them correctly.
+- Ensure LaTeX formulas are clean and valid.
+{avoid_str}
+"""
+
+    model_name = "llama-3.3-70b-versatile"
+    try:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a specialized JSON generator. You output only raw, valid JSON. Never output any introductory text, markdown code blocks, explanation or commentary."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.5,
+            "max_tokens": 4096
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=25)
+        if res.status_code == 200:
+            res_data = res.json()
+            content = res_data["choices"][0]["message"]["content"]
+            parsed_pool = json.loads(content)
+            if "Easy" in parsed_pool and "Medium" in parsed_pool and "Hard" in parsed_pool:
+                # Rewrite IDs to be unique
+                for diff in ["Easy", "Medium", "Hard"]:
+                    if isinstance(parsed_pool[diff], list):
+                        for idx, q in enumerate(parsed_pool[diff]):
+                            if isinstance(q, dict):
+                                q["id"] = f"custom_dyn_{subject.lower()[:2]}_{diff.lower()[:1]}_{uuid.uuid4().hex[:8]}"
+                return prioritize_pool_by_weak_topics(parsed_pool, weak_topics)
+            else:
+                logger.warning("Dynamic mock pool response did not have all difficulties.")
+    except Exception as e:
+        logger.warning(f"Failed to generate dynamic mock pool: {e}")
+        
+    return None
+
 @router.post("/generate")
 async def generate_test(data: GenerateTestRequest):
     import random
@@ -603,13 +743,37 @@ async def generate_test(data: GenerateTestRequest):
 
     # Fetch pool of questions for that subject
     pool = QUESTION_BANK[subject]
-    weak_topics = set(get_combined_weak_topics(data.student_id, subject))
+    weak_topics = get_combined_weak_topics(data.student_id, subject)
+    weak_topics_set = set(weak_topics)
+
+    # Fetch attempted questions
+    attempted_ids, attempted_texts, attempted_topics = get_attempted_questions(data.student_id)
+
+    # Filter static pool
+    filtered_pool = {}
+    needs_dynamic = False
+    for diff in ["Easy", "Medium", "Hard"]:
+        remaining = [q for q in pool[diff] if q["id"] not in attempted_ids]
+        filtered_pool[diff] = remaining
+        if len(remaining) < 4:
+            needs_dynamic = True
+
+    # If static pool is depleted, generate dynamically via Groq
+    if needs_dynamic:
+        logger.info(f"Static mock pool depleted/low for {subject}. Generating dynamic questions via Groq.")
+        dyn_pool = generate_dynamic_mock_pool(subject, attempted_texts, weak_topics)
+        if dyn_pool:
+            return dyn_pool
+        logger.warning("Dynamic generation failed or GROQ key missing. Falling back to filtered pool.")
 
     # Format and randomize/prioritize questions
     client_pool = {}
     for diff in ["Easy", "Medium", "Hard"]:
-        q_list = pool[diff]
-        
+        q_list = filtered_pool[diff]
+        # Safety fallback
+        if not q_list:
+            q_list = pool[diff]
+            
         # Split into weak topic questions and standard questions
         weak_pile = []
         standard_pile = []
@@ -623,7 +787,10 @@ async def generate_test(data: GenerateTestRequest):
                 "options": q["options"],
                 "correct_index": q["correct_index"]
             }
-            if q["topic"] in weak_topics:
+            if "solution" in q:
+                formatted_q["solution"] = q["solution"]
+                
+            if q["topic"] in weak_topics_set:
                 weak_pile.append(formatted_q)
             else:
                 standard_pile.append(formatted_q)
@@ -647,11 +814,18 @@ async def generate_custom_test(data: GenerateCustomTestRequest):
     topics = data.topics
     weak_topics = get_combined_weak_topics(data.student_id, subject)
     
+    attempted_ids, attempted_texts, attempted_topics_list = get_attempted_questions(data.student_id)
+    
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         logger.warning("GROQ_API_KEY is not defined in .env, using local fallback for custom test.")
-        return get_fallback_custom_pool(subject, topics, weak_topics)
+        return get_fallback_custom_pool(subject, topics, weak_topics, attempted_ids)
         
+    avoid_str = ""
+    if attempted_texts:
+        recent_texts = attempted_texts[:20]
+        avoid_str = "\n- CRITICAL NEGATIVE CONSTRAINT: Do NOT generate questions that are identical or extremely similar to the following previously attempted questions:\n" + "\n".join(f"- {txt}" for txt in recent_texts)
+
     prompt = f"""
 You are Professor ARIA, a genius AI Science Tutor. Generate a mock test question pool for Class 11-12 {subject} targeting JEE/NEET exam preparation, strictly based on the following student's weak topics:
 "{topics}"
@@ -690,6 +864,7 @@ Guidelines:
 - Ensure the solution derivation is concise, formatted in clear sequential steps, and avoids wordy paragraphs.
 - ID must be unique (e.g. custom_e_1, custom_e_2, etc.).
 - Ensure LaTeX formulas are clean and valid.
+{avoid_str}
 """
 
     # Try querying the primary model first
@@ -722,6 +897,11 @@ Guidelines:
             content = res_data["choices"][0]["message"]["content"]
             parsed_pool = json.loads(content)
             if "Easy" in parsed_pool and "Medium" in parsed_pool and "Hard" in parsed_pool:
+                for diff in ["Easy", "Medium", "Hard"]:
+                    if isinstance(parsed_pool[diff], list):
+                        for idx, q in enumerate(parsed_pool[diff]):
+                            if isinstance(q, dict):
+                                q["id"] = f"custom_{subject.lower()[:2]}_{diff.lower()[:1]}_{uuid.uuid4().hex[:8]}"
                 return prioritize_pool_by_weak_topics(parsed_pool, weak_topics)
             else:
                 logger.warning(f"Primary model {model_name} response did not have all difficulties.")
@@ -758,6 +938,11 @@ Guidelines:
                 content = res_data["choices"][0]["message"]["content"]
                 parsed_pool = json.loads(content)
                 if "Easy" in parsed_pool and "Medium" in parsed_pool and "Hard" in parsed_pool:
+                    for diff in ["Easy", "Medium", "Hard"]:
+                        if isinstance(parsed_pool[diff], list):
+                            for idx, q in enumerate(parsed_pool[diff]):
+                                if isinstance(q, dict):
+                                    q["id"] = f"custom_{subject.lower()[:2]}_{diff.lower()[:1]}_{uuid.uuid4().hex[:8]}"
                     logger.info("Backup model successfully generated custom test.")
                     return prioritize_pool_by_weak_topics(parsed_pool, weak_topics)
                 else:
@@ -767,7 +952,7 @@ Guidelines:
         except Exception as backup_err:
             logger.warning(f"Backup model {backup_model} also failed: {backup_err}. Using filtered static fallback pool.")
             
-    return get_fallback_custom_pool(subject, topics, weak_topics)
+    return get_fallback_custom_pool(subject, topics, weak_topics, attempted_ids)
 
 @router.post("/submit")
 async def submit_test(data: SubmitTestRequest):
@@ -890,9 +1075,17 @@ async def retry_similar_questions(data: RetrySimilarRequest):
     topics = data.topics
     topics_str = ", ".join(topics)
     
+    # Retrieve attempted questions
+    attempted_ids, attempted_texts, attempted_topics = get_attempted_questions(data.student_id)
+    
     # Try using Groq if API key is present for a personalized smart retest
     api_key = os.getenv("GROQ_API_KEY")
     if api_key:
+        avoid_str = ""
+        if attempted_texts:
+            recent_texts = attempted_texts[:20]
+            avoid_str = "\n- CRITICAL NEGATIVE CONSTRAINT: Do NOT generate questions that are identical or extremely similar to the following previously attempted questions:\n" + "\n".join(f"- {txt}" for txt in recent_texts)
+
         prompt = f"""
 You are Professor ARIA, a genius AI Science Tutor. Generate a targeted follow-up "Retry Assessment" for Class 11-12 {subject} targeting JEE/NEET.
 The student recently made mistakes in questions covering these topics: "{topics_str}".
@@ -903,7 +1096,7 @@ Return a raw, valid JSON object matching the following structure:
 {{
   "Easy": [
     {{
-      "id": "retry_e_1",
+      "id": "custom_retry_e_1",
       "subject": "{subject}",
       "topic": "Name of sub-topic",
       "difficulty": "Easy",
@@ -927,8 +1120,9 @@ Guidelines:
 - CRITICAL: The solution derivation MUST explicitly state the final correct value and name the correct option at the very end of the solution (e.g., "Therefore, 10 m/s is the correct answer."). The calculated value, options list, correct_index, and final answer statement in the solution MUST be 100% consistent and point to the exact same option.
 - Ensure the solution derivation is concise, formatted in clear sequential steps, and avoids wordy paragraphs.
 - Ensure all keys exist and option arrays have exactly 4 choices.
-- ID must be unique (e.g. retry_e_1, retry_m_1, etc.).
+- ID must be unique and MUST start with "custom_retry_" (e.g. custom_retry_e_1, custom_retry_m_1, etc.).
 - Ensure LaTeX formulas are clean and valid.
+{avoid_str}
 """
         try:
             url = "https://api.groq.com/openai/v1/chat/completions"
@@ -951,19 +1145,44 @@ Guidelines:
                 content = res.json()["choices"][0]["message"]["content"]
                 parsed_pool = json.loads(content)
                 if "Easy" in parsed_pool or "Medium" in parsed_pool or "Hard" in parsed_pool:
+                    for diff in ["Easy", "Medium", "Hard"]:
+                        if diff in parsed_pool and isinstance(parsed_pool[diff], list):
+                            for idx, q in enumerate(parsed_pool[diff]):
+                                if isinstance(q, dict):
+                                    q["id"] = f"custom_retry_{subject.lower()[:2]}_{diff.lower()[:1]}_{uuid.uuid4().hex[:8]}"
                     return parsed_pool
-        except Exception as e:
-            logger.warning(f"Error generating retry test via Groq: {e}")
+            raise Exception(f"Primary model failed with status {res.status_code}: {res.text}")
+        except Exception as primary_err:
+            logger.warning(f"Primary model failed in retry generation: {primary_err}. Trying backup model (llama-3.1-8b-instant)...")
+            try:
+                payload["model"] = "llama-3.1-8b-instant"
+                res = requests.post(url, headers=headers, json=payload, timeout=20)
+                if res.status_code == 200:
+                    content = res.json()["choices"][0]["message"]["content"]
+                    parsed_pool = json.loads(content)
+                    if "Easy" in parsed_pool or "Medium" in parsed_pool or "Hard" in parsed_pool:
+                        for diff in ["Easy", "Medium", "Hard"]:
+                            if diff in parsed_pool and isinstance(parsed_pool[diff], list):
+                                for idx, q in enumerate(parsed_pool[diff]):
+                                    if isinstance(q, dict):
+                                        q["id"] = f"custom_retry_{subject.lower()[:2]}_{diff.lower()[:1]}_{uuid.uuid4().hex[:8]}"
+                        logger.info("Backup model successfully generated retry test.")
+                        return parsed_pool
+            except Exception as backup_err:
+                logger.warning(f"Backup model also failed in retry generation: {backup_err}")
 
     # Fallback to local QUESTION_BANK matching topics
     fallback_pool = {"Easy": [], "Medium": [], "Hard": []}
     if subject in QUESTION_BANK:
         for diff in ["Easy", "Medium", "Hard"]:
             for q in QUESTION_BANK[subject][diff]:
+                # Filter out attempted questions
+                if attempted_ids and q["id"] in attempted_ids:
+                    continue
                 # If question topic matches any of the target topics
                 if any(t.lower() in q["topic"].lower() or q["topic"].lower() in t.lower() for t in topics):
                     fallback_pool[diff].append({
-                        "id": f"retry_{q['id']}",
+                        "id": f"custom_retry_{q['id']}",
                         "subject": q["subject"],
                         "topic": q["topic"],
                         "difficulty": q["difficulty"],
@@ -976,6 +1195,6 @@ Guidelines:
     # If fallback pool is empty, return standard subset
     has_any = any(len(fallback_pool[d]) > 0 for d in ["Easy", "Medium", "Hard"])
     if not has_any:
-        return get_fallback_custom_pool(subject, topics_str)
+        return get_fallback_custom_pool(subject, topics_str, attempted_ids=attempted_ids)
         
     return fallback_pool

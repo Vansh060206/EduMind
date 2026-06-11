@@ -686,10 +686,16 @@ export default function ChemLab() {
         {/* Navigation Header */}
         <header className="flex justify-between items-center border-b border-white/5 pb-4">
           <button 
-            onClick={() => navigate("/dashboard")}
+            onClick={() => {
+              if (window.history.length > 2) {
+                navigate(-1);
+              } else {
+                navigate("/dashboard");
+              }
+            }}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-white transition-colors font-medium"
           >
-            <ArrowLeft size={16} /> Back to Dashboard
+            <ArrowLeft size={16} /> Back
           </button>
           
           <div className="flex items-center gap-1.5">
