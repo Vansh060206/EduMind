@@ -479,14 +479,24 @@ export default function Courses() {
       
       // 1. Fetch courses from backend API
       const coursesRes = await api.get("/courses");
-      const coursesData = coursesRes.data || [];
+      let coursesData = coursesRes.data || [];
+
+      // Fallback if backend is empty
+      if (coursesData.length === 0) {
+        coursesData = Object.values(CURRICULUM).map(c => ({
+          id: c.id,
+          title: c.title,
+          subject: c.subject,
+          description: c.description || "Master core formulas and structural concepts with interactive curriculum content.",
+        }));
+      }
 
       // 2. Fetch enrollments from backend API
       const enrollmentsRes = await api.get(`/courses/my-courses/${activeStudentId}`);
       const enrollmentsData = enrollmentsRes.data || [];
 
-      setCourses(coursesData || []);
-      setEnrollments(enrollmentsData || []);
+      setCourses(coursesData);
+      setEnrollments(enrollmentsData);
       console.log("[EduMind Diagnostics] Courses enrollments:", enrollmentsData);
 
       // 3. Load completed lessons from localStorage
@@ -2042,10 +2052,10 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
                     backgroundColor: `${activeCourseConfig.color}10` 
                   }}
                 >
-                  {activeCourse.subject}
+                  {activeCourse?.subject || activeCourseConfig.subject}
                 </span>
                 <h2 className="text-base font-extrabold text-white mt-1.5 tracking-tight font-sans">
-                  {activeCourse.title}
+                  {activeCourse?.title || activeCourseConfig.title}
                 </h2>
               </div>
 
@@ -2149,7 +2159,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
                       <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
                         <span>Curriculum</span>
                         <ChevronRight size={10} />
-                        <span>{activeCourse.title}</span>
+                        <span>{activeCourse?.title || activeCourseConfig.title}</span>
                         <ChevronRight size={10} />
                         <span className="text-gray-300">{activeLesson.topic}</span>
                       </div>
@@ -2537,7 +2547,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
                             Synthesize AI study flashcards targeting <b>{activeLesson.topic}</b> to self-test derivations and formulas.
                           </p>
                           <button
-                            onClick={() => handleStartFlashcards(activeLesson.topic, activeCourse.subject)}
+                            onClick={() => handleStartFlashcards(activeLesson.topic, activeCourse?.subject || activeCourseConfig.subject)}
                             className="w-full py-2.5 rounded-xl border border-pink-500/20 bg-pink-500/10 hover:bg-pink-500/20 text-pink-300 font-bold text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
                           >
                             <BookOpen size={13} /> Study Flashcards (AI)
@@ -2573,8 +2583,10 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
                     </p>
                     <button
                       onClick={() => {
-                        const prompt = encodeURIComponent(`Explain the concept of ${activeLesson.topic} in ${activeCourse.title} with simple examples and formula derivations.`);
-                        navigate(`/ask-aria?q=${prompt}&subject=${activeCourse.subject}`);
+                        const courseTitle = activeCourse?.title || activeCourseConfig.title;
+                        const courseSubject = activeCourse?.subject || activeCourseConfig.subject;
+                        const prompt = encodeURIComponent(`Explain the concept of ${activeLesson.topic} in ${courseTitle} with simple examples and formula derivations.`);
+                        navigate(`/ask-aria?q=${prompt}&subject=${courseSubject}`);
                       }}
                       className="w-full py-2.5 rounded-xl border border-cyan-500/20 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-bold text-xs flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
                     >
