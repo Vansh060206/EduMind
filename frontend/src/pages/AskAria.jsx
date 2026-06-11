@@ -290,7 +290,7 @@ export default function AskAria() {
     } catch (err) {
       console.error("Failed to ask ARIA:", err);
       // Client-side fallback if server is fully down or offline
-      let answerText = "I encountered a minor core calibration slip. Please verify if your FastAPI backend server is active on http://127.0.0.1:8000.";
+      let answerText = `I encountered a minor core calibration slip. Please verify if your FastAPI backend server is active on ${api.defaults.baseURL}.`;
       
       const q_lower = finalQuestion.toLowerCase();
       if (q_lower.includes("cylinder") || q_lower.includes("rolling") || q_lower.includes("sphere")) {

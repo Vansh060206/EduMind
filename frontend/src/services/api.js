@@ -1,7 +1,17 @@
 import axios from "axios";
 
+const getBaseURL = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")) {
+    return "https://edumind-production-bb82.up.railway.app";
+  }
+  return "http://127.0.0.1:8000";
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000",
+  baseURL: getBaseURL(),
 });
 
 api.interceptors.request.use((config) => {
