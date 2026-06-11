@@ -631,6 +631,18 @@ export default function ChemLab() {
       window.removeEventListener("mouseup", onMouseUp);
       container.removeEventListener("wheel", onWheel);
       if (rendererRef.current) {
+        scene.traverse((object) => {
+          if (object.isMesh) {
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+              if (Array.isArray(object.material)) {
+                object.material.forEach(m => m.dispose());
+              } else {
+                object.material.dispose();
+              }
+            }
+          }
+        });
         rendererRef.current.dispose();
       }
     };

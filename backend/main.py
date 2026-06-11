@@ -4,9 +4,10 @@
 # every request comes here first,
 # then gets directed to the right route.
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from routes import auth, courses, students, ml, doubts, tests
+from dependencies import get_current_user
 
 app = FastAPI(
     title="EduMind API",
@@ -30,20 +31,12 @@ app.add_middleware(
 # /auth/signup, /auth/login, /auth/me
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 
-# /courses/, /courses/{id}/enroll
-app.include_router(courses.router, prefix="/courses", tags=["Courses"])
-
-# /students/quiz-result, /students/performance/{id}
-app.include_router(students.router, prefix="/students", tags=["Students"])
-
-# /ml/predict-risk, /ml/forecast-score
-app.include_router(ml.router, prefix="/ml", tags=["Machine Learning"])
-
-# /doubts/ask, /doubts/history/{student_id}
-app.include_router(doubts.router, prefix="/doubts", tags=["Doubts"])
-
-# /tests/generate, /tests/submit
-app.include_router(tests.router, prefix="/tests", tags=["Tests"])
+# Protected routes
+app.include_router(courses.router, prefix="/courses", tags=["Courses"], dependencies=[Depends(get_current_user)])
+app.include_router(students.router, prefix="/students", tags=["Students"], dependencies=[Depends(get_current_user)])
+app.include_router(ml.router, prefix="/ml", tags=["Machine Learning"], dependencies=[Depends(get_current_user)])
+app.include_router(doubts.router, prefix="/doubts", tags=["Doubts"], dependencies=[Depends(get_current_user)])
+app.include_router(tests.router, prefix="/tests", tags=["Tests"], dependencies=[Depends(get_current_user)])
 
 @app.get("/")
 async def root():

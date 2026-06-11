@@ -39,3 +39,37 @@ button:not(:disabled):active {
   transform: translateY(0.5px);
   filter: brightness(0.95);
 }
+
+html {
+  scroll-behavior: smooth;
+}
+
+@keyframes floatFormula {
+  0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.15; }
+  50% { transform: translateY(-12px) rotate(3deg); opacity: 0.35; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.marquee-track {
+  animation: marquee 40s linear infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+.landing-page section {
+  scroll-margin-top: 5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .marquee-track { animation: none; }
+  @keyframes floatFormula {
+    0%, 100% { opacity: 0.2; }
+  }
+}

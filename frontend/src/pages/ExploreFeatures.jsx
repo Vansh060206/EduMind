@@ -85,7 +85,7 @@ export default function ExploreFeatures() {
           onClick={() => navigate("/")}
           className="flex items-center gap-2 text-xs font-semibold tracking-widest uppercase text-gray-400 hover:text-white transition-colors duration-300 px-4 py-2.5 rounded-xl border border-white/5 bg-white/5 backdrop-blur-md"
         >
-          <ArrowLeft size={14} /> Back to Login
+          <ArrowLeft size={14} /> Back to Home
         </button>
 
         <div className="flex items-center gap-2">
@@ -198,13 +198,13 @@ export default function ExploreFeatures() {
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button 
-                onClick={() => navigate("/")}
+                onClick={() => navigate("/login")}
                 className="w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-xs tracking-widest uppercase text-black bg-gradient-to-r from-cyan-400 to-purple-500 shadow-lg shadow-cyan-500/20 hover:scale-105 hover:shadow-cyan-500/30 transition-all duration-300"
               >
                 Start Learning Now
               </button>
               <button 
-                onClick={() => navigate("/")}
+                onClick={() => navigate("/login")}
                 className="w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-xs tracking-widest uppercase text-white border border-white/10 bg-white/5 backdrop-blur-md hover:bg-white/10 transition-all duration-300"
               >
                 Access Portal

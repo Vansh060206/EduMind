@@ -10,6 +10,13 @@ import {
 import { supabase } from "../services/supabase";
 import api from "../services/api";
 import { CURRICULUM } from "../utils/curriculum";
+import {
+  fetchStudentMlMetrics,
+  fetchWeakTopicsForSubject,
+  matchCourseWeakTopics,
+  prioritizePoolByWeakTopics,
+} from "../utils/studentMetrics";
+import { addDailyXp, incrementDailyCounter } from "../utils/dailyReset";
 
 const getUserIdFromToken = (token) => {
   try {
@@ -912,8 +919,11 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
         setCompletedLessons(updatedCompleted);
       }
 
+      incrementDailyCounter(studentId, "lessons");
+      addDailyXp(studentId, durationMinutes * 5);
       toast.success(`Session logged! +${durationMinutes * 5} XP earned for ${activeLesson.topic}`);
       triggerCelebration();
+      window.dispatchEvent(new Event("edumind_db_sync"));
 
       // Pause timer and reset
       setIsTimerRunning(false);
@@ -1412,9 +1422,19 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
           }
         });
       }
-      const topicsStr = topicsList.join(", ");
 
-      // 2. Fetch AI-generated questions from /tests/generate-custom instead of /tests/generate
+      // 2. Pull weak topics from quiz history + mistake logs, scoped to this course
+      const weakTopics = await fetchWeakTopicsForSubject(studentId, subject);
+      const targetedTopics = matchCourseWeakTopics(topicsList, weakTopics);
+      const topicsStr = targetedTopics.length > 0
+        ? targetedTopics.slice(0, 5).join(", ")
+        : topicsList.join(", ");
+
+      if (targetedTopics.length > 0) {
+        toast.success(`Adaptive quiz targeting ${targetedTopics.length} weak topic(s)`);
+      }
+
+      // 3. Fetch AI-generated questions focused on weak topics when available
       const res = await api.post("/tests/generate-custom", {
         student_id: studentId || "guest",
         subject: subject,
@@ -1427,18 +1447,10 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
         return;
       }
 
-      // Shuffle returned questions in the pool for random sequencing
-      const shuffledPool = {};
-      for (const diff of ["Easy", "Medium", "Hard"]) {
-        if (pool[diff]) {
-          shuffledPool[diff] = [...pool[diff]].sort(() => Math.random() - 0.5);
-        } else {
-          shuffledPool[diff] = [];
-        }
-      }
+      const prioritizedPool = prioritizePoolByWeakTopics(pool, targetedTopics.length > 0 ? targetedTopics : weakTopics);
       
       setQuizSubject(subject);
-      setQuizQuestions(shuffledPool);
+      setQuizQuestions(prioritizedPool);
       setCurrentQuestionIndex(0);
       setChosenOption(null);
       setAnswerSubmitted(false);
@@ -1453,7 +1465,7 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
 
       setLastWrongTopic(null); // Reset dynamic weak topic pointer
       
-      const firstQ = selectNextQuestion(shuffledPool, "Medium", []);
+      const firstQ = selectNextQuestion(prioritizedPool, "Medium", []);
       if (firstQ) {
         setCurrentQuestion(firstQ);
         setAskedQuestionIds([firstQ.id]);
@@ -1582,16 +1594,13 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
       console.error("Failed to submit quiz results:", err);
     });
 
-    // 2. Fire ML cognitive risk prediction in parallel
-    const riskPromise = api.post("/ml/predict-risk", {
-      avg_score: finalScore,
-      study_hours: 12.5,
-      doubts_asked: 2,
-      quizzes_done: 6,
-      streak: 4
-    }).then(res => {
-      setRiskResult(res.data);
-    }).catch(err => {
+    // 2. Fire ML cognitive risk prediction with real student metrics
+    const mlMetricsPromise = fetchStudentMlMetrics(targetStudentId, finalScore);
+    const riskPromise = mlMetricsPromise.then((metrics) =>
+      api.post("/ml/predict-risk", metrics).then(res => {
+        setRiskResult(res.data);
+      })
+    ).catch(err => {
       console.error("Failed to predict risk status:", err);
       let status = "On-Track";
       let prob = 0.2;
@@ -1623,6 +1632,8 @@ This module introduces the key frameworks and concepts of ${activeCourse?.title 
       setPredictingRisk(false);
     }
     
+    incrementDailyCounter(targetStudentId, "quizzes");
+    addDailyXp(targetStudentId, 50);
     toast.success(`Quiz Completed! Score: ${finalScore}% (+50 XP)`);
     window.dispatchEvent(new Event("edumind_db_sync"));
   };

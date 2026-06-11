@@ -286,6 +286,7 @@ export default function AskAria() {
       setActiveDoubt(res.data);
       setQuestion("");
       setSelectedAttachment(null);
+      window.dispatchEvent(new Event("edumind_db_sync"));
     } catch (err) {
       console.error("Failed to ask ARIA:", err);
       // Client-side fallback if server is fully down or offline

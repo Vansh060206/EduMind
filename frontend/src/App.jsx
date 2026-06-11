@@ -1,20 +1,23 @@
 // App.jsx — Main router with splash + survey + auth + dashboard flow
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import SplashScreen from "./components/SplashScreen";
 import OnboardingSurvey from "./components/OnboardingSurvey";
 import Login from "./pages/login";
-import Dashboard from "./pages/Dashboard";
-import ExploreFeatures from "./pages/ExploreFeatures";
-import AskAria from "./pages/AskAria";
-import MockTests from "./pages/MockTests";
-import Courses from "./pages/Courses";
-import PhysicsLab from "./pages/PhysicsLab";
-import ChemLab from "./pages/ChemLab";
-import History from "./pages/History";
-import Planner from "./pages/Planner";
-import Analytics from "./pages/Analytics";
+import LandingPage from "./pages/LandingPage";
+import { Suspense, lazy } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
+
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const ExploreFeatures = lazy(() => import("./pages/ExploreFeatures"));
+const AskAria = lazy(() => import("./pages/AskAria"));
+const MockTests = lazy(() => import("./pages/MockTests"));
+const Courses = lazy(() => import("./pages/Courses"));
+const PhysicsLab = lazy(() => import("./pages/PhysicsLab"));
+const ChemLab = lazy(() => import("./pages/ChemLab"));
+const History = lazy(() => import("./pages/History"));
+const Planner = lazy(() => import("./pages/Planner"));
+const Analytics = lazy(() => import("./pages/Analytics"));
 import { supabase } from "./services/supabase";
 import api from "./services/api";
 import GlobalStudyTimer from "./components/GlobalStudyTimer";
@@ -30,7 +33,7 @@ const withTimeout = (promise, ms = 4000) => {
 // ── AUTH GUARD ─────────────────────────────────
 function PrivateRoute({ children }) {
   const token = localStorage.getItem("edumind_token");
-  return token ? children : <Navigate to="/" replace />;
+  return token ? children : <Navigate to="/login" replace />;
 }
 
 // ── GLOBAL AUTH LISTENER ────────────────────────
@@ -82,15 +85,14 @@ function AuthListener() {
     const path = window.location.pathname;
 
     if (!token) {
-      // Not logged in: allow public paths, redirect others to "/"
-      if (path !== "/" && path !== "" && path !== "/features") {
+      const publicPaths = ["/", "/login", "/features"];
+      if (!publicPaths.includes(path)) {
         navigate("/");
       }
       return;
     }
 
-    // Redirect to dashboard if logged in but visiting login screen
-    if (path === "/" || path === "") {
+    if (path === "/login") {
       navigate("/dashboard");
       return;
     }
@@ -264,28 +266,16 @@ function AuthListener() {
   return null;
 }
 
+// ── FALLBACK LOADER ─────────────────────────────
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-[#030014]">
+    <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
+
 export default function App() {
-  const [phase, setPhase] = useState("splash"); // splash → survey → app
-
-  useEffect(() => {
-    // Skip splash if already visited this session
-    const visited = sessionStorage.getItem("edumind_visited");
-    if (visited) setPhase("app");
-  }, []);
-
-  const handleSplashDone = () => {
-    setPhase("app");
-    sessionStorage.setItem("edumind_visited", "true");
-  };
-
   return (
-    <>
-      {/* ── SPLASH ── */}
-      {phase === "splash" && (
-        <SplashScreen onComplete={handleSplashDone} />
-      )}
-
-      {/* ── MAIN APP ── */}
+    <ErrorBoundary>
       <Router>
         {/* Listen for auth changes and handle routing */}
         <AuthListener />
@@ -307,87 +297,92 @@ export default function App() {
           }}
         />
 
-        <Routes>
-          {/* Login / Signup */}
-          <Route path="/" element={<Login />} />
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* Marketing landing page */}
+            <Route path="/" element={<LandingPage />} />
 
-          {/* Onboarding survey — after signup */}
-          <Route path="/onboarding" element={
-            <PrivateRoute>
-              <OnboardingSurvey onComplete={() => window.location.href = "/dashboard"} />
-            </PrivateRoute>
-          } />
+            {/* Login / Signup */}
+            <Route path="/login" element={<Login />} />
 
-          {/* Dashboard */}
-          <Route path="/dashboard" element={
-            <PrivateRoute>
-              <Dashboard />
-            </PrivateRoute>
-          } />
+            {/* Onboarding survey — after signup */}
+            <Route path="/onboarding" element={
+              <PrivateRoute>
+                <OnboardingSurvey onComplete={() => window.location.href = "/dashboard"} />
+              </PrivateRoute>
+            } />
 
-          {/* Explore Features */}
-          <Route path="/features" element={<ExploreFeatures />} />
+            {/* Dashboard */}
+            <Route path="/dashboard" element={
+              <PrivateRoute>
+                <Dashboard />
+              </PrivateRoute>
+            } />
 
-          {/* Ask ARIA Chat */}
-          <Route path="/ask-aria" element={
-            <PrivateRoute>
-              <AskAria />
-            </PrivateRoute>
-          } />
+            {/* Explore Features */}
+            <Route path="/features" element={<ExploreFeatures />} />
 
-          {/* Mock Tests */}
-          <Route path="/mock-tests" element={
-            <PrivateRoute>
-              <MockTests />
-            </PrivateRoute>
-          } />
+            {/* Ask ARIA Chat */}
+            <Route path="/ask-aria" element={
+              <PrivateRoute>
+                <AskAria />
+              </PrivateRoute>
+            } />
 
-          {/* Courses */}
-          <Route path="/courses" element={
-            <PrivateRoute>
-              <Courses />
-            </PrivateRoute>
-          } />
+            {/* Mock Tests */}
+            <Route path="/mock-tests" element={
+              <PrivateRoute>
+                <MockTests />
+              </PrivateRoute>
+            } />
 
-          {/* Physics Lab */}
-          <Route path="/physics-lab" element={
-            <PrivateRoute>
-              <PhysicsLab />
-            </PrivateRoute>
-          } />
+            {/* Courses */}
+            <Route path="/courses" element={
+              <PrivateRoute>
+                <Courses />
+              </PrivateRoute>
+            } />
 
-          {/* Chemistry Lab */}
-          <Route path="/chem-lab" element={
-            <PrivateRoute>
-              <ChemLab />
-            </PrivateRoute>
-          } />
+            {/* Physics Lab */}
+            <Route path="/physics-lab" element={
+              <PrivateRoute>
+                <PhysicsLab />
+              </PrivateRoute>
+            } />
 
-          {/* History */}
-          <Route path="/history" element={
-            <PrivateRoute>
-              <History />
-            </PrivateRoute>
-          } />
+            {/* Chemistry Lab */}
+            <Route path="/chem-lab" element={
+              <PrivateRoute>
+                <ChemLab />
+              </PrivateRoute>
+            } />
 
-          {/* Planner */}
-          <Route path="/planner" element={
-            <PrivateRoute>
-              <Planner />
-            </PrivateRoute>
-          } />
+            {/* History */}
+            <Route path="/history" element={
+              <PrivateRoute>
+                <History />
+              </PrivateRoute>
+            } />
 
-          {/* Analytics */}
-          <Route path="/analytics" element={
-            <PrivateRoute>
-              <Analytics />
-            </PrivateRoute>
-          } />
+            {/* Planner */}
+            <Route path="/planner" element={
+              <PrivateRoute>
+                <Planner />
+              </PrivateRoute>
+            } />
 
-          {/* Catch all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Analytics */}
+            <Route path="/analytics" element={
+              <PrivateRoute>
+                <Analytics />
+              </PrivateRoute>
+            } />
+
+            {/* Catch all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </Router>
-    </>
+    </ErrorBoundary>
   );
 }

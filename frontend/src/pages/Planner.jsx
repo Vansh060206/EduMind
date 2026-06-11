@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabase";
 import api from "../services/api";
 import { CURRICULUM } from "../utils/curriculum";
+import { ensureDailyReset, scheduleDailyResetCheck } from "../utils/dailyReset";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip
@@ -154,6 +155,8 @@ export default function Planner() {
           return;
         }
 
+        ensureDailyReset(activeUserId);
+
         // Load personal tasks list from local storage
         const savedTasks = localStorage.getItem(`edumind_planner_tasks_${activeUserId}`);
         if (savedTasks) {
@@ -221,6 +224,28 @@ export default function Planner() {
     };
 
     fetchStudyPlanAndForecast();
+  }, [currentUser.id]);
+
+  useEffect(() => {
+    const userId = currentUser.id;
+    if (!userId) return;
+
+    const reloadTasks = () => {
+      const savedTasks = localStorage.getItem(`edumind_planner_tasks_${userId}`);
+      if (savedTasks) {
+        setTasks(JSON.parse(savedTasks));
+      } else {
+        setTasks({});
+      }
+    };
+
+    const stopResetCheck = scheduleDailyResetCheck(userId, reloadTasks);
+    window.addEventListener("edumind_daily_reset", reloadTasks);
+
+    return () => {
+      stopResetCheck();
+      window.removeEventListener("edumind_daily_reset", reloadTasks);
+    };
   }, [currentUser.id]);
 
   const logout = async () => {

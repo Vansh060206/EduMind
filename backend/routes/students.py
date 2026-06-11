@@ -53,22 +53,28 @@ async def save_quiz_result(data: QuizResultCreate, student_id: str):
 
 @router.get("/performance/{student_id}")
 async def get_performance(student_id: str):
-    # Get all quiz results for a student
-    # Week 2: ML model will process this data
-    result = supabase.table("quiz_results")\
-        .select("*")\
-        .eq("student_id", student_id)\
-        .order("attempted_at", desc=True)\
-        .execute()
-    return result.data
+    try:
+        result = supabase.table("quiz_results")\
+            .select("*")\
+            .eq("student_id", student_id)\
+            .order("attempted_at", desc=True)\
+            .execute()
+        return result.data
+    except Exception as e:
+        logger.warning(f"Failed to fetch performance: {e}")
+        return []
 
 @router.get("/study-sessions/{student_id}")
 async def get_study_sessions(student_id: str):
-    result = supabase.table("study_sessions")\
-        .select("*")\
-        .eq("student_id", student_id)\
-        .execute()
-    return result.data
+    try:
+        result = supabase.table("study_sessions")\
+            .select("*")\
+            .eq("student_id", student_id)\
+            .execute()
+        return result.data
+    except Exception as e:
+        logger.warning(f"Failed to fetch study sessions: {e}")
+        return []
 
 @router.post("/study-session")
 async def log_study_session(data: StudySessionCreate, student_id: str):

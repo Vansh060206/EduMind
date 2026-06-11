@@ -13,47 +13,18 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabase";
 import api from "../services/api";
 import { CURRICULUM } from "../utils/curriculum";
-
-// ── MOCK DATA (replace with API calls in Week 2) ──
-const STATS = [
-  { label: "Courses Enrolled", value: "4", icon: BookOpen, color: "#a855f7", bg: "rgba(168,85,247,0.1)" },
-  { label: "Quizzes Done", value: "12", icon: Target, color: "#06b6d4", bg: "rgba(6,182,212,0.1)" },
-  { label: "Avg Score", value: "74%", icon: TrendingUp, color: "#34d399", bg: "rgba(52,211,153,0.1)" },
-  { label: "Study Hours", value: "28h", icon: Clock, color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
-];
-
-const COURSES = [
-  {
-    id: 1, subject: "Physics", title: "Rotational Motion",
-    progress: 62, color: "#a855f7", icon: "⚡",
-    lessons: 12, nextLesson: "Angular Momentum",
-    streak: 5,
-  },
-  {
-    id: 2, subject: "Chemistry", title: "Organic Chemistry",
-    progress: 38, color: "#06b6d4", icon: "🧪",
-    lessons: 12, nextLesson: "Alkenes & Alkynes",
-    streak: 2,
-  },
-  {
-    id: 3, subject: "Mathematics", title: "Integral Calculus",
-    progress: 81, color: "#34d399", icon: "∫",
-    lessons: 12, nextLesson: "Definite Integrals",
-    streak: 8,
-  },
-  {
-    id: 4, subject: "Physics", title: "Electrostatics",
-    progress: 15, color: "#f59e0b", icon: "🔋",
-    lessons: 12, nextLesson: "Coulomb's Law",
-    streak: 0,
-  },
-];
-
-const WEAK_TOPICS = [
-  { topic: "Angular Momentum", subject: "Physics", score: 34, priority: "High" },
-  { topic: "Organic Reactions", subject: "Chemistry", score: 41, priority: "High" },
-  { topic: "Limits & Continuity", subject: "Maths", score: 58, priority: "Medium" },
-];
+import { fetchStudentMlMetrics, buildForecastHistory } from "../utils/studentMetrics";
+import {
+  ensureDailyReset,
+  getDailyPeriodKey,
+  getPreviousDailyPeriodKey,
+  getDailySeconds,
+  getDailyXp,
+  getDailyCounter,
+  countSinceDailyPeriodStart,
+  awardTargetXpOnce,
+  scheduleDailyResetCheck,
+} from "../utils/dailyReset";
 
 // ── SIDEBAR NAV ──────────────────────────────
 const NAV = [
@@ -161,8 +132,17 @@ export default function Dashboard() {
   const isNewUser = localStorage.getItem("edumind_new_user") === "true";
 
   const [liveStudySeconds, setLiveStudySeconds] = useState(0);
+  const [dailyXp, setDailyXp] = useState(0);
+  const [doubtsToday, setDoubtsToday] = useState(0);
   const [showStreakModal, setShowStreakModal] = useState(false);
   const [streakAnimationPlayed, setStreakAnimationPlayed] = useState(false);
+
+  useEffect(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) setGreeting("Good Morning");
+    else if (hour < 17) setGreeting("Good Afternoon");
+    else setGreeting("Good Evening");
+  }, []);
 
   const loadDashboardData = async () => {
     try {
@@ -278,16 +258,20 @@ export default function Dashboard() {
           studySessions = studyRes.data || [];
         }
 
-        // 4. Fetch doubts count via backend API (resilient)
-        let doubtsCount = 0;
+        ensureDailyReset(activeUserId);
+
+        // 4. Fetch doubts via backend API (resilient)
+        let doubtsHistory = [];
         try {
           const doubtsRes = await api.get(`/doubts/history/${activeUserId}`);
-          doubtsCount = (doubtsRes.data || []).length;
+          doubtsHistory = doubtsRes.data || [];
         } catch (err) {
           console.warn("Backend failed to load doubts count, falling back directly to Supabase:", err);
-          const doubtsRes = await supabase.from("doubts").select("id", { count: "exact", head: true }).eq("student_id", activeUserId);
-          doubtsCount = doubtsRes.count || 0;
+          const doubtsRes = await supabase.from("doubts").select("*").eq("student_id", activeUserId);
+          doubtsHistory = doubtsRes.data || [];
         }
+        const doubtsTodayCount = countSinceDailyPeriodStart(doubtsHistory, "created_at");
+        setDoubtsToday(doubtsTodayCount);
 
         // Seed initial completed lessons locally for realistic starting dashboard state
         const completedKey = `edumind_completed_lessons_${activeUserId}`;
@@ -456,65 +440,49 @@ export default function Dashboard() {
           loading: false
         });
 
-        // Run ML predictions
+        setDailyXp(getDailyXp(activeUserId));
+
+        // Run ML predictions with live student metrics
         try {
-          const scoreVal = isNewUser ? 0.0 : (quizzesCount > 0 ? avgScore : 74.0);
-          const hoursVal = isNewUser ? 0.0 : (studyHours > 0 ? studyHours : 28.0);
-          const doubtsVal = isNewUser ? 0 : doubtsCount;
-          const quizzesVal = isNewUser ? 0 : (quizzesCount > 0 ? quizzesCount : 12);
-          const streakVal = isNewUser ? 1 : 8;
+          const metrics = isNewUser
+            ? { avg_score: 0, study_hours: 0, doubts_asked: 0, quizzes_done: 0, streak: 1 }
+            : await fetchStudentMlMetrics(activeUserId);
 
-          const riskPayload = {
-            avg_score: scoreVal,
-            study_hours: hoursVal,
-            doubts_asked: doubtsVal,
-            quizzes_done: quizzesVal,
-            streak: streakVal
-          };
-
-          const historyPayload = {
-            scores_history: (quizResults.length >= 2) ? quizResults.map(q => ({
-              date: q.attempted_at ? q.attempted_at.split("T")[0] : new Date().toISOString().split("T")[0],
-              score: q.score
-            })) : [
-              { date: "2026-05-15", score: 62.0 },
-              { date: "2026-05-20", score: 65.5 },
-              { date: "2026-05-25", score: 68.0 },
-              { date: "2026-05-30", score: 74.0 }
-            ]
-          };
+          const scoresHistory = buildForecastHistory(quizResults);
+          const forecastPromise = scoresHistory.length >= 2
+            ? api.post("/ml/forecast-score", { scores_history: scoresHistory })
+            : Promise.resolve({ data: [] });
 
           const [riskRes, forecastRes] = await Promise.all([
-            api.post("/ml/predict-risk", riskPayload),
-            api.post("/ml/forecast-score", historyPayload)
+            api.post("/ml/predict-risk", metrics),
+            forecastPromise,
           ]);
 
           setMlData({
             risk: riskRes.data,
-            forecast: forecastRes.data,
-            loading: false
+            forecast: forecastRes.data || [],
+            loading: false,
           });
         } catch (mlErr) {
           console.error("Failed to load ML predictions:", mlErr);
+          const fallbackScore = quizzesCount > 0 ? avgScore : 0;
           setMlData({
             risk: {
-              status: "Calibrated",
-              risk_probability: 0.1,
-              feature_importances: {},
-              recommendations: [
-                "Review weak concept logs in Chemistry/Physics. Your test scores are currently below target baseline.",
-                "Attempt short chapter-wise concept check quizzes to build your confidence."
-              ]
+              status: fallbackScore < 50 ? "At-Risk" : fallbackScore >= 80 ? "Advanced" : "On-Track",
+              risk_probability: fallbackScore < 50 ? 0.55 : 0.2,
+              feature_importances: { avg_score: 0.5, study_hours: 0.3, doubts_asked: 0.15, streak: 0.05 },
+              recommendations: weakTopics.length > 0
+                ? [
+                    `Focus on ${weakTopics[0].topic} — your lowest scoring topic at ${weakTopics[0].score}%.`,
+                    "Complete today's targets and take an adaptive quiz to refresh your diagnostics.",
+                  ]
+                : [
+                    "Complete today's study targets to build your daily streak.",
+                    "Take an adaptive quiz to keep your performance metrics current.",
+                  ],
             },
-            forecast: [
-              { date: "Day 5", predicted_score: 70.0, lower_bound: 65.0, upper_bound: 75.0 },
-              { date: "Day 10", predicted_score: 72.5, lower_bound: 66.0, upper_bound: 78.0 },
-              { date: "Day 15", predicted_score: 75.0, lower_bound: 68.0, upper_bound: 82.0 },
-              { date: "Day 20", predicted_score: 77.0, lower_bound: 69.0, upper_bound: 85.0 },
-              { date: "Day 25", predicted_score: 80.0, lower_bound: 70.0, upper_bound: 88.0 },
-              { date: "Day 30", predicted_score: 82.5, lower_bound: 71.0, upper_bound: 91.0 }
-            ],
-            loading: false
+            forecast: [],
+            loading: false,
           });
         }
 
@@ -530,34 +498,46 @@ export default function Dashboard() {
   }, [currentUser.id, isNewUser]);
 
   useEffect(() => {
-    const handleDbSync = () => {
-      loadDashboardData();
-    };
-    window.addEventListener("edumind_db_sync", handleDbSync);
+    const handleRefresh = () => loadDashboardData();
+    window.addEventListener("edumind_db_sync", handleRefresh);
     return () => {
-      window.removeEventListener("edumind_db_sync", handleDbSync);
+      window.removeEventListener("edumind_db_sync", handleRefresh);
     };
   }, [currentUser.id]);
 
   useEffect(() => {
-    if (dashboardData.loading) return;
-    
     const userId = currentUser.id;
-    const updateTime = () => {
-      const totalSecs = Number(localStorage.getItem(`edumind_total_seconds_${userId}`) || 0);
-      setLiveStudySeconds(totalSecs);
+    if (!userId) return;
+
+    const refreshLiveState = () => {
+      ensureDailyReset(userId);
+      setLiveStudySeconds(getDailySeconds(userId));
+      setDailyXp(getDailyXp(userId));
     };
 
-    updateTime();
+    const handleDailyReset = () => {
+      refreshLiveState();
+      setStreakAnimationPlayed(false);
+      loadDashboardData();
+    };
 
-    window.addEventListener("edumind_study_tick", updateTime);
-    window.addEventListener("edumind_db_sync", updateTime);
+    refreshLiveState();
+
+    window.addEventListener("edumind_study_tick", refreshLiveState);
+    window.addEventListener("edumind_db_sync", refreshLiveState);
+    window.addEventListener("edumind_xp_update", refreshLiveState);
+    window.addEventListener("edumind_daily_reset", handleDailyReset);
+
+    const stopResetCheck = scheduleDailyResetCheck(userId, handleDailyReset);
 
     return () => {
-      window.removeEventListener("edumind_study_tick", updateTime);
-      window.removeEventListener("edumind_db_sync", updateTime);
+      window.removeEventListener("edumind_study_tick", refreshLiveState);
+      window.removeEventListener("edumind_db_sync", refreshLiveState);
+      window.removeEventListener("edumind_xp_update", refreshLiveState);
+      window.removeEventListener("edumind_daily_reset", handleDailyReset);
+      stopResetCheck();
     };
-  }, [dashboardData.loading, currentUser.id]);
+  }, [currentUser.id]);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -579,18 +559,28 @@ export default function Dashboard() {
     { label: "Courses Enrolled", value: String(dashboardData.coursesCount), icon: BookOpen, color: "#a855f7", bg: "rgba(168,85,247,0.1)" },
     { label: "Quizzes Done", value: String(dashboardData.quizzesCount), icon: Target, color: "#06b6d4", bg: "rgba(6,182,212,0.1)" },
     { label: "Avg Score", value: `${dashboardData.avgScore}%`, icon: TrendingUp, color: "#34d399", bg: "rgba(52,211,153,0.1)" },
-    { label: "Study Hours", value: formatLiveTime(liveStudySeconds), icon: Clock, color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
+    { label: "Today's Study", value: formatLiveTime(liveStudySeconds), icon: Clock, color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
   ];
+
+  const userId = currentUser.id || "default";
+  ensureDailyReset(userId);
 
   const displayCourses = dashboardData.enrolledCourses;
   
   const displayWeakTopics = dashboardData.weakTopics;
 
+  const targetHours = parseFloat(String(survey.hours || "3").split("-")[0]) || 3;
+  const quizzesToday = Math.max(
+    getDailyCounter(userId, "quizzes"),
+    countSinceDailyPeriodStart(dashboardData.quizResults)
+  );
+  const lessonsToday = getDailyCounter(userId, "lessons");
+
   const displayDailyTarget = [
-    { task: "Complete Onboarding Survey", done: true, xp: 50 },
-    { task: `Self-Study for ${survey.hours || "3-4"} Hours`, done: (liveStudySeconds / 3600) >= parseFloat(survey.hours || 3), xp: 30 },
-    { task: `Enroll in your first course`, done: dashboardData.coursesCount > 0, xp: 20 },
-    { task: "Take your first diagnostic quiz", done: dashboardData.quizzesCount > 0, xp: 40 },
+    { id: "study_hours", task: `Self-Study for ${targetHours}+ Hours`, done: liveStudySeconds / 3600 >= targetHours, xp: 30 },
+    { id: "quiz_today", task: "Complete 1 adaptive quiz", done: quizzesToday > 0, xp: 40 },
+    { id: "lesson_today", task: "Finish 1 lesson module", done: lessonsToday > 0, xp: 25 },
+    { id: "doubt_today", task: "Ask ARIA 1 doubt", done: doubtsToday > 0, xp: 20 },
   ];
 
   // Calculate completed targets XP
@@ -601,53 +591,52 @@ export default function Dashboard() {
   const totalXP = displayDailyTarget.reduce((acc, t) => acc + t.xp, 0);
   const xpPercentage = totalXP > 0 ? Math.round((earnedXP / totalXP) * 100) : 0;
 
-  // Streak logic based on daily targets completion
-  const userId = currentUser.id || "default";
-  const todayStr = new Date().toLocaleDateString('en-CA');
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toLocaleDateString('en-CA');
+  const periodKey = getDailyPeriodKey();
+  const previousPeriodKey = getPreviousDailyPeriodKey();
 
   const lastCompletedDate = localStorage.getItem(`edumind_streak_last_completed_date_${userId}`);
   const storedStreak = localStorage.getItem(`edumind_streak_count_${userId}`);
 
-  let baseStreak = 0;
-  if (storedStreak !== null) {
-    baseStreak = Number(storedStreak);
-  } else {
-    baseStreak = dashboardData.quizzesCount > 0 ? Math.min(5, dashboardData.quizzesCount) : 0;
-    localStorage.setItem(`edumind_streak_count_${userId}`, String(baseStreak));
-  }
+  let baseStreak = storedStreak !== null ? Number(storedStreak) : 0;
 
-  // Check if streak is broken
-  if (lastCompletedDate && lastCompletedDate !== todayStr && lastCompletedDate !== yesterdayStr) {
+  if (lastCompletedDate && lastCompletedDate !== periodKey && lastCompletedDate !== previousPeriodKey) {
     baseStreak = 0;
     localStorage.setItem(`edumind_streak_count_${userId}`, "0");
   }
 
   const allTargetsDone = displayDailyTarget.every(t => t.done);
-  const isCompletedToday = lastCompletedDate === todayStr;
+  const isCompletedToday = lastCompletedDate === periodKey;
 
-  const activeStreakCount = isCompletedToday 
-    ? baseStreak 
+  const activeStreakCount = isCompletedToday
+    ? baseStreak
     : (allTargetsDone ? baseStreak + 1 : baseStreak);
 
   const displayStreak = `${activeStreakCount} Day Streak`;
 
   useEffect(() => {
+    if (dashboardData.loading || !userId) return;
+
+    displayDailyTarget.forEach((target) => {
+      if (target.done) {
+        awardTargetXpOnce(userId, target.id, target.xp);
+      }
+    });
+  }, [dashboardData.loading, userId, liveStudySeconds, quizzesToday, lessonsToday, doubtsToday, targetHours]);
+
+  useEffect(() => {
     if (dashboardData.loading) return;
 
-    if (allTargetsDone && lastCompletedDate !== todayStr && !streakAnimationPlayed) {
+    if (allTargetsDone && lastCompletedDate !== periodKey && !streakAnimationPlayed) {
       setShowStreakModal(true);
       setStreakAnimationPlayed(true);
 
       const newStreak = baseStreak + 1;
       localStorage.setItem(`edumind_streak_count_${userId}`, String(newStreak));
-      localStorage.setItem(`edumind_streak_last_completed_date_${userId}`, todayStr);
+      localStorage.setItem(`edumind_streak_last_completed_date_${userId}`, periodKey);
     }
-  }, [allTargetsDone, dashboardData.loading, userId, baseStreak, lastCompletedDate, todayStr, streakAnimationPlayed]);
+  }, [allTargetsDone, dashboardData.loading, userId, baseStreak, lastCompletedDate, periodKey, streakAnimationPlayed]);
 
-  const displayXP = String(dashboardData.quizzesCount * 100 + earnedXP);
+  const displayXP = String(dailyXp);
 
   const displayAchievements = [
     { icon: "🌱", label: "Fresh Recruit", earned: true },
@@ -879,10 +868,14 @@ export default function Dashboard() {
                           </li>
                         ))}
                       </ul>
+                    ) : displayWeakTopics.length > 0 ? (
+                      <p className="text-xs text-gray-300 leading-relaxed">
+                        Based on your recent quizzes, focus on <span className="text-purple-300 font-semibold">{displayWeakTopics[0].topic}</span> today.
+                        Your average score in this topic is {displayWeakTopics[0].score}%.
+                      </p>
                     ) : (
                       <p className="text-xs text-gray-300 leading-relaxed">
-                        Based on your last 3 quizzes, focus on <span className="text-purple-300 font-semibold">Angular Momentum</span> today.
-                        Your score dropped 18% this week. 📉
+                        Complete today's study targets and take an adaptive quiz to keep your diagnostics current.
                       </p>
                     )}
                   </div>
@@ -1021,9 +1014,10 @@ export default function Dashboard() {
 
           {/* Today's targets */}
           <Card>
-            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
               <Target size={15} className="text-cyan-400" /> Today's Targets
             </h3>
+            <p className="text-[10px] text-gray-500 mb-3">Resets daily at 6:00 AM</p>
             <div className="space-y-3">
               {displayDailyTarget.map((t, i) => (
                 <div key={i} className="flex items-center gap-3">
@@ -1112,7 +1106,7 @@ export default function Dashboard() {
                 }}
               >
                 <div>
-                  <p className="text-[9px] text-gray-400">Total XP Earned</p>
+                  <p className="text-[9px] text-gray-400">Today's XP Earned</p>
                   <p className="text-base font-black text-white">{displayXP} <span className="text-[10px] text-purple-400 font-bold font-mono">XP</span></p>
                 </div>
                 <Star size={20} className="text-amber-400" />

@@ -387,6 +387,122 @@ QUESTION_BANK = {
     }
 }
 
+SUBJECT_ALIASES = {
+    "maths": "Mathematics",
+    "mathematics": "Mathematics",
+    "physics": "Physics",
+    "chemistry": "Chemistry",
+    "biology": "Biology",
+}
+
+def normalize_subject(subject: str) -> str:
+    if not subject:
+        return subject
+    return SUBJECT_ALIASES.get(subject.strip().lower(), subject)
+
+def build_flat_question_lookup() -> Dict[str, Dict[str, Any]]:
+    flat_questions = {}
+    for _, diffs in QUESTION_BANK.items():
+        for q_list in diffs.values():
+            for q in q_list:
+                flat_questions[q["id"]] = q
+    return flat_questions
+
+def topic_matches(candidate: str, target: str) -> bool:
+    if not candidate or not target:
+        return False
+    candidate_l = candidate.lower()
+    target_l = target.lower()
+    return candidate_l in target_l or target_l in candidate_l
+
+def get_weak_topics_from_mistakes(student_id: str, subject: str = None) -> set:
+    weak_topics = set()
+    if not student_id or student_id == "guest":
+        return weak_topics
+
+    flat_questions = build_flat_question_lookup()
+    normalized_subject = normalize_subject(subject) if subject else None
+
+    try:
+        res = supabase.table("mistake_analysis").select("question_id").eq("student_id", student_id).execute()
+        if res.data:
+            for row in res.data:
+                q_id = row.get("question_id")
+                question = flat_questions.get(q_id)
+                if not question:
+                    continue
+                if normalized_subject and normalize_subject(question.get("subject", "")) != normalized_subject:
+                    continue
+                weak_topics.add(question["topic"])
+    except Exception as e:
+        logger.warning(f"Could not load mistake history for weak topics: {e}")
+
+    return weak_topics
+
+def get_weak_topics_from_quizzes(student_id: str, subject: str = None) -> set:
+    weak_topics = set()
+    if not student_id or student_id == "guest":
+        return weak_topics
+
+    normalized_subject = normalize_subject(subject) if subject else None
+
+    try:
+        res = supabase.table("quiz_results").select("topic, subject, score").eq("student_id", student_id).execute()
+        if not res.data:
+            return weak_topics
+
+        topic_scores = {}
+        for row in res.data:
+            row_subject = normalize_subject(row.get("subject", ""))
+            if normalized_subject and row_subject != normalized_subject:
+                continue
+            topic = row.get("topic")
+            if not topic:
+                continue
+            if topic not in topic_scores:
+                topic_scores[topic] = {"total": 0, "count": 0}
+            topic_scores[topic]["total"] += row.get("score", 0)
+            topic_scores[topic]["count"] += 1
+
+        for topic, stats in topic_scores.items():
+            avg_score = stats["total"] / stats["count"]
+            if avg_score < 60:
+                weak_topics.add(topic)
+    except Exception as e:
+        logger.warning(f"Could not load quiz history for weak topics: {e}")
+
+    return weak_topics
+
+def get_combined_weak_topics(student_id: str, subject: str = None) -> List[str]:
+    mistake_topics = get_weak_topics_from_mistakes(student_id, subject)
+    quiz_topics = get_weak_topics_from_quizzes(student_id, subject)
+    return sorted(mistake_topics | quiz_topics)
+
+def prioritize_pool_by_weak_topics(pool: Dict[str, Any], weak_topics: List[str]) -> Dict[str, Any]:
+    import random
+
+    if not pool or not weak_topics:
+        return pool
+
+    prioritized = {}
+    for diff in ["Easy", "Medium", "Hard"]:
+        q_list = pool.get(diff, [])
+        weak_pile = []
+        standard_pile = []
+
+        for q in q_list:
+            topic = q.get("topic", "")
+            if any(topic_matches(topic, wt) for wt in weak_topics):
+                weak_pile.append(q)
+            else:
+                standard_pile.append(q)
+
+        random.shuffle(weak_pile)
+        random.shuffle(standard_pile)
+        prioritized[diff] = weak_pile + standard_pile
+
+    return prioritized
+
 # --- Schemas ---
 class GenerateTestRequest(BaseModel):
     student_id: str
@@ -409,7 +525,21 @@ class RetrySimilarRequest(BaseModel):
     subject: str
     topics: List[str]
 
-def get_fallback_custom_pool(subject: str, topics: str = None) -> Dict[str, Any]:
+@router.get("/weak-topics/{student_id}")
+async def get_weak_topics(student_id: str, subject: str):
+    normalized_subject = normalize_subject(subject)
+    mistake_topics = sorted(get_weak_topics_from_mistakes(student_id, normalized_subject))
+    quiz_topics = sorted(get_weak_topics_from_quizzes(student_id, normalized_subject))
+    combined = get_combined_weak_topics(student_id, normalized_subject)
+
+    return {
+        "subject": normalized_subject,
+        "weak_topics": combined,
+        "from_mistakes": mistake_topics,
+        "from_quizzes": quiz_topics,
+    }
+
+def get_fallback_custom_pool(subject: str, topics: str = None, weak_topics: List[str] = None) -> Dict[str, Any]:
     import re
     import string
     if subject not in QUESTION_BANK:
@@ -462,37 +592,18 @@ def get_fallback_custom_pool(subject: str, topics: str = None) -> Dict[str, Any]
             }
             for q in q_list
         ]
-    return client_pool
+    return prioritize_pool_by_weak_topics(client_pool, weak_topics or [])
 
 @router.post("/generate")
 async def generate_test(data: GenerateTestRequest):
     import random
-    subject = data.subject
+    subject = normalize_subject(data.subject)
     if subject not in QUESTION_BANK:
         raise HTTPException(status_code=400, detail="Invalid subject name")
 
     # Fetch pool of questions for that subject
     pool = QUESTION_BANK[subject]
-    
-    # Build a local lookup map of question ID to question dictionary
-    flat_questions = {}
-    for sub, diffs in QUESTION_BANK.items():
-        for diff, q_list in diffs.items():
-            for q in q_list:
-                flat_questions[q["id"]] = q
-
-    # Fetch student's mistake analysis to check for weak topics
-    weak_topics = set()
-    try:
-        if data.student_id and data.student_id != "guest":
-            res = supabase.table("mistake_analysis").select("question_id").eq("student_id", data.student_id).execute()
-            if res.data:
-                for row in res.data:
-                    q_id = row.get("question_id")
-                    if q_id in flat_questions:
-                        weak_topics.add(flat_questions[q_id]["topic"])
-    except Exception as e:
-        logger.warning(f"Could not load student mistake history for personalization: {e}")
+    weak_topics = set(get_combined_weak_topics(data.student_id, subject))
 
     # Format and randomize/prioritize questions
     client_pool = {}
@@ -532,13 +643,14 @@ async def generate_custom_test(data: GenerateCustomTestRequest):
     import requests
     import json
     
-    subject = data.subject
+    subject = normalize_subject(data.subject)
     topics = data.topics
+    weak_topics = get_combined_weak_topics(data.student_id, subject)
     
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         logger.warning("GROQ_API_KEY is not defined in .env, using local fallback for custom test.")
-        return get_fallback_custom_pool(subject, topics)
+        return get_fallback_custom_pool(subject, topics, weak_topics)
         
     prompt = f"""
 You are Professor ARIA, a genius AI Science Tutor. Generate a mock test question pool for Class 11-12 {subject} targeting JEE/NEET exam preparation, strictly based on the following student's weak topics:
@@ -610,7 +722,7 @@ Guidelines:
             content = res_data["choices"][0]["message"]["content"]
             parsed_pool = json.loads(content)
             if "Easy" in parsed_pool and "Medium" in parsed_pool and "Hard" in parsed_pool:
-                return parsed_pool
+                return prioritize_pool_by_weak_topics(parsed_pool, weak_topics)
             else:
                 logger.warning(f"Primary model {model_name} response did not have all difficulties.")
         
@@ -647,7 +759,7 @@ Guidelines:
                 parsed_pool = json.loads(content)
                 if "Easy" in parsed_pool and "Medium" in parsed_pool and "Hard" in parsed_pool:
                     logger.info("Backup model successfully generated custom test.")
-                    return parsed_pool
+                    return prioritize_pool_by_weak_topics(parsed_pool, weak_topics)
                 else:
                     logger.warning(f"Backup model {backup_model} response did not have all difficulties.")
             
@@ -655,7 +767,7 @@ Guidelines:
         except Exception as backup_err:
             logger.warning(f"Backup model {backup_model} also failed: {backup_err}. Using filtered static fallback pool.")
             
-    return get_fallback_custom_pool(subject, topics)
+    return get_fallback_custom_pool(subject, topics, weak_topics)
 
 @router.post("/submit")
 async def submit_test(data: SubmitTestRequest):
