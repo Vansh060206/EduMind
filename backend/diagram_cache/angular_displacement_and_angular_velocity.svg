@@ -1,0 +1,21 @@
+<svg viewBox="0 0 600 350" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="600" height="350" fill="#030014" rx="0" />
+  <circle cx="120" cy="170" r="80" fill="none" stroke="#a855f7" stroke-width="2" />
+  <line x1="120" y1="90" x2="120" y2="250" stroke="#06b6d4" stroke-width="2" />
+  <line x1="120" y1="170" x2="200" y2="170" stroke="#f59e0b" stroke-width="2" />
+  <text x="110" y="90" fill="#ffffff" font-size="14" font-family="system-ui, sans-serif">θ</text>
+  <text x="200" y="180" fill="#ffffff" font-size="14" font-family="system-ui, sans-serif">r</text>
+  <circle cx="120" cy="170" r="10" fill="#34d399" />
+  <line x1="120" y1="170" x2="150" y2="200" stroke="#a855f7" stroke-width="2" />
+  <text x="140" y="210" fill="#ffffff" font-size="14" font-family="system-ui, sans-serif">ω</text>
+  <foreignObject x="350" y="30" width="220" height="290">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="color: #94a3b8; font-family: system-ui, sans-serif; font-size: 11px; line-height: 1.5; word-wrap: break-word; word-break: break-word;">
+      <h3 style="color: #ffffff; font-size: 13px; font-weight: bold; margin: 0 0 8px 0;">Key Details:</h3>
+      <ul style="margin: 0; padding-left: 14px; color: #cbd5e1;">
+        <li style="margin-bottom: 6px;"><strong style="color: #34d399;">Angular Displacement (θ):</strong> The angle through which an object rotates.</li>
+        <li style="margin-bottom: 6px;"><strong style="color: #a855f7;">Angular Velocity (ω):</strong> The rate of change of angular displacement.</li>
+        <li style="margin-bottom: 6px;"><strong style="color: #06b6d4;">Radius (r):</strong> The distance from the axis of rotation to the object.</li>
+      </ul>
+    </div>
+  </foreignObject>
+</svg>
