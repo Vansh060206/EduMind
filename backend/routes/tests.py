@@ -954,6 +954,100 @@ Guidelines:
             
     return get_fallback_custom_pool(subject, topics, weak_topics, attempted_ids)
 
+def generate_aria_remediation_feedback(subject: str, score: float, graded_details: list) -> str:
+    import os
+    import requests
+    import json
+    
+    # Identify incorrect questions and their topics
+    incorrect_questions = [q for q in graded_details if not q.get("is_correct", False)]
+    if not incorrect_questions:
+        return f"Flawless score of {score}%! You have demonstrated complete conceptual mastery across all tested syllabus nodes for {subject}. Continue benchmarking your performance with higher difficulty tiers or alternative subjects."
+        
+    api_key = os.getenv("GROQ_API_KEY")
+    if api_key:
+        # Construct a detailed summary of incorrect responses to send to the LLM
+        mistakes_summary = []
+        for q in incorrect_questions[:5]: # Send up to 5 mistakes to keep tokens in check
+            options = q.get("options")
+            chosen_idx = q.get("chosen_index")
+            correct_idx = q.get("correct_index")
+            
+            chosen = "[No Answer]"
+            correct = "[Unknown]"
+            
+            if options and isinstance(options, list):
+                if chosen_idx is not None and chosen_idx != -1 and chosen_idx < len(options):
+                    chosen = options[chosen_idx]
+                if correct_idx is not None and correct_idx < len(options):
+                    correct = options[correct_idx]
+            else:
+                chosen = str(q.get("chosen_value") or q.get("chosen_index") or "[No Answer]")
+                correct = str(q.get("correct_value") or q.get("correct_index") or "[Unknown]")
+
+            mistakes_summary.append({
+                "question": q.get("text"),
+                "topic": q.get("topic"),
+                "difficulty": q.get("difficulty"),
+                "chosen_answer": chosen,
+                "correct_answer": correct,
+                "solution_summary": q.get("solution", "")[:200] + "..."
+            })
+            
+        prompt = f"""You are Professor ARIA, a genius AI Science Tutor. Analyze the following incorrect mock test responses from a student preparing for competitive JEE/NEET exams in the subject '{subject}':
+Score: {score}%
+Incorrect Questions list:
+{json.dumps(mistakes_summary, indent=2)}
+
+Based on their specific mistakes, provide a highly personalized, encouraging, and academically rigorous "ARIA Remediation Advice" report.
+The report should:
+1. Explain the specific conceptual gap or common pitfalls associated with these topics.
+2. Outline concrete steps (e.g. key formula checks, algebraic sign rules, reaction mechanism steps) to help the student master these topics and solve these problems faster.
+3. Recommend how to structure their study session to address these gaps immediately.
+
+Guidelines:
+- Maintain a warm, encouraging, and highly academic tone.
+- Keep the response concise (around 150-220 words).
+- Use clear bullet points.
+- Do NOT include any JSON wraps or markdown code-blocks around the text. Just return the raw paragraph and list text.
+- Use LaTeX formatting for mathematical expressions where appropriate ($...$ inline and $$...$$ for blocks).
+"""
+        try:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "llama-3.1-8b-instant", # Use fast model for low latency during grading
+                "messages": [
+                    {"role": "system", "content": "You are Professor ARIA, a genius AI Science Tutor. You write highly personalized study suggestions for students who made mistakes on their science quizzes."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.4,
+                "max_tokens": 500
+            }
+            res = requests.post(url, json=payload, headers=headers, timeout=8)
+            if res.status_code == 200:
+                feedback = res.json()["choices"][0]["message"]["content"].strip()
+                if feedback:
+                    return feedback
+        except Exception as e:
+            logger.warning(f"Groq failed to generate personalized ARIA feedback: {e}")
+            
+    # Fallback heuristic calculation if API key fails or is missing
+    wrong_topics = list(set([q["topic"] for q in incorrect_questions]))
+    topics_text = ", ".join(wrong_topics[:3])
+    if len(wrong_topics) > 3:
+        topics_text += f", and {len(wrong_topics) - 3} other areas"
+        
+    if score >= 80:
+        return f"Great performance! You scored {score}%. However, you showed slight vulnerability in: **{topics_text}**. We recommend reviewing the pedagogical derivations and resolving units/sign-conventions to turn this into a perfect score next time."
+    elif score >= 50:
+        return f"Solid baseline established with a score of {score}%. Key conceptual gaps remain in: **{topics_text}**. We recommend focusing on the step-by-step math derivations and active recall flashcards in these chapters to strengthen your foundations."
+    else:
+        return f"High conceptual vulnerability detected in this stream, specifically in: **{topics_text}**. We suggest pausing new mock exams on this subject, launching the corresponding course workspace, and re-visiting the core chapter notes before re-attempting."
+
 @router.post("/submit")
 async def submit_test(data: SubmitTestRequest):
     subject = data.subject
@@ -1056,13 +1150,17 @@ async def submit_test(data: SubmitTestRequest):
     except Exception as e:
         logger.error(f"Failed to log quiz result for mock_test: {str(e)}")
 
+    # Generate ARIA dynamic feedback advice
+    aria_feedback = generate_aria_remediation_feedback(subject, score, graded_details)
+
     return {
         "status": "success",
         "score": score,
         "total_questions": total_count,
         "correct_answers": correct_count,
         "predicted_exam_score": predicted_exam_score,
-        "graded_details": graded_details
+        "graded_details": graded_details,
+        "aria_feedback": aria_feedback
     }
 
 @router.post("/retry-similar")
@@ -1198,3 +1296,18 @@ Guidelines:
         return get_fallback_custom_pool(subject, topics_str, attempted_ids=attempted_ids)
         
     return fallback_pool
+
+class AriaFeedbackRequest(BaseModel):
+    subject: str
+    score: float
+    graded_details: List[Dict[str, Any]]
+
+@router.post("/aria-feedback")
+async def get_aria_feedback(data: AriaFeedbackRequest):
+    try:
+        feedback = generate_aria_remediation_feedback(data.subject, data.score, data.graded_details)
+        return {"aria_feedback": feedback}
+    except Exception as e:
+        logger.error(f"Failed to generate ARIA feedback: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

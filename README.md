@@ -29,7 +29,7 @@ EduMind redefines educational technology by integrating machine learning, spatia
 
 | Feature | Description | Highlight |
 |---------|-------------|-----------|
-| 📈 **Predictive Analytics** | Time-series score forecasting & risk profiling | Uses **Meta Prophet** & **XGBoost** to accurately predict learning trajectories. |
+| 📈 **Predictive Analytics** | Time-series score forecasting & risk profiling | Uses **Ridge Regression** & **Random Forest** to accurately predict learning trajectories. |
 | 🔬 **3D Interactive Labs** | Real-time, interactive physics and chemistry simulations | Powered by **Three.js**, visualize rotational kinematics or stereochemistry organically. |
 | 🤖 **Ask ARIA (AI Tutor)** | Context-aware, built-in intelligent tutoring system | Analyzes formulas and outputs step-by-step proofs dynamically. |
 | ✍️ **Robust LaTeX Engine** | Flawless mathematical rendering on the web | Zero escape collisions, ensuring perfect normalization of $y = mx+b$ and complex calculus. |
@@ -54,11 +54,11 @@ flowchart TD
 
     %% Learning loop
     DB --> |User Profile & Progress| API[FastAPI backend]:::backend
-    API --> |Predict risk / readiness| XGB[XGBoost Predictor]:::ml
-    API --> |Forecast score trends| Prophet[Prophet Forecaster]:::ml
+    API --> |Predict risk / readiness| RF[Random Forest Predictor]:::ml
+    API --> |Forecast score trends| Ridge[Ridge Forecaster]:::ml
 
     %% Course & Diagnostics
-    XGB & Prophet --> |Personalized Metrics| Dashboard[Dynamic Dashboard Analytics]:::frontend
+    RF & Ridge --> |Personalized Metrics| Dashboard[Dynamic Dashboard Analytics]:::frontend
     Dashboard --> |Take Quiz / Interactive Test| Quiz[Adaptive Quiz Engine]:::frontend
     Quiz --> |Submit Quiz Results| DB
     DB --> |Trigger analysis| Heatmap[Weak Topic Heatmap]:::frontend
@@ -68,11 +68,11 @@ flowchart TD
 
 ### Machine Learning Modules
 
-1. **XGBoost Performance Predictor (`ml/performance.py`)**
-   Predicts readiness categories (**At-Risk**, **On-Track**, **Advanced**) based on average test scores, weekly study hours, doubt requests, quiz counts, and daily active streaks.
+1. **Random Forest Performance Predictor (`ml/performance.py`)**
+   Predicts readiness categories (**At-Risk**, **On-Track**, **Advanced**) based on average test scores, weekly study hours, doubt requests, quiz counts, and daily active streaks using a Random Forest Classifier.
    
-2. **Prophet Time-Series Forecaster (`ml/forecaster.py`)**
-   Projects a student’s score trend up to 30 days ahead using Ridge Regression with built-in seasonal adjustments (weekly fatigue/energy cycles).
+2. **Ridge Regression Score Forecaster (`ml/forecaster.py`)**
+   Projects a student’s score trend up to 30 days ahead using Ridge Regression with manual seasonality adjustments (weekly cycles calculated via sine wave transformations).
 
 ---
 

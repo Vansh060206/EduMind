@@ -18,6 +18,7 @@ import {
   getLocalCompetitiveTest,
   getLocalFullJeeTest 
 } from "../utils/questions";
+import { cleanMathLaTeX } from "../utils/mathUtils";
 
 const SUBJECTS = [
   { name: "Physics", icon: "⚡", color: "text-purple-400", border: "border-purple-500/30", bg: "from-purple-500/20 to-indigo-500/10", topics: "Rotational Dynamics, Simple Harmonic Motion, Electrostatics, Carnot Engines..." },
@@ -215,235 +216,6 @@ export default function MockTests() {
     } finally {
       setRetestLoading(false);
     }
-  };
-
-  // --- Clean LaTeX Math Parser ---
-  const cleanMathLaTeX = (text) => {
-    if (!text) return "";
-    let clean = text;
-
-    // Restore garbled LaTeX symbols from control characters (JSON/JS string literal parsing quirks)
-    clean = clean.replace(/\t/g, '\\t');
-    clean = clean.replace(/\f/g, '\\f');
-    clean = clean.replace(/\v/g, '\\v');
-    clean = clean.replace(/[\b]/g, '\\b');
-    clean = clean.replace(/\r([a-zA-Z])/g, '\\r$1');
-    clean = clean.replace(/\n(eq|nabla|u\b|u\^|u_)/g, '\\n$1');
-
-    // Normalize multiple backslashes to a single backslash
-    clean = clean.replace(/\\+/g, '\\');
-
-    // Clean up stand-alone "pm" math operator representing ±
-    clean = clean.replace(/(^|[^a-zA-Z])pm\s*([0-9\.\+-]+|\\)/g, "$1±$2");
-
-    // Convert vectors: \vec{v} -> v⃗ and \overrightarrow{v} -> v⃗
-    clean = clean.replace(/\\vec\s*\{([^}]+)\}/g, "$1\u20d7");
-    clean = clean.replace(/\\overrightarrow\s*\{([^}]+)\}/g, "$1\u20d7");
-    
-    // Convert unit vectors: \hat{i} -> î
-    clean = clean.replace(/\\hat\s*\{([^}]+)\}/g, "$1\u0302");
-    
-    // Strip script wrappers: \mathcal{A} -> A
-    clean = clean.replace(/\\mathcal\s*\{([^}]+)\}/g, "$1");
-    
-    // Convert Blackboard Bold (sets of numbers): \mathbb{R} -> ℝ, etc.
-    clean = clean.replace(/\\mathbb\s*\{R\}/g, "ℝ");
-    clean = clean.replace(/\\mathbb\s*\{N\}/g, "ℕ");
-    clean = clean.replace(/\\mathbb\s*\{Z\}/g, "ℤ");
-    clean = clean.replace(/\\mathbb\s*\{Q\}/g, "ℚ");
-    clean = clean.replace(/\\mathbb\s*\{C\}/g, "ℂ");
-    clean = clean.replace(/\\mathbb\s*\{([^}]+)\}/g, "$1");
-
-    // Parse matrices: \begin{vmatrix} ... \end{vmatrix}
-    clean = clean.replace(/\\begin\s*\{vmatrix\}([\s\S]*?)\\end\s*\{vmatrix\}/g, (match, body) => {
-      const rows = body.split(/\\\\|\n/).map(row => row.trim()).filter(Boolean);
-      const formattedRows = rows.map(row => {
-        const cols = row.split("&").map(c => c.trim());
-        return `│  ${cols.join("    ")}  │`;
-      });
-      return "\n" + formattedRows.join("\n") + "\n";
-    });
-
-    // Parse aligned equations: \begin{aligned} ... \end{aligned}
-    clean = clean.replace(/\\begin\s*\{aligned\}([\s\S]*?)\\end\s*\{aligned\}/g, (match, body) => {
-      const rows = body.split(/\\\\|\n/).map(row => row.trim()).filter(Boolean);
-      const formattedRows = rows.map(row => {
-        return row.replace(/&/g, " ").trim();
-      });
-      return "\n" + formattedRows.join("\n") + "\n";
-    });
-    clean = clean.replace(/\\begin\s*\{align\*?\}([\s\S]*?)\\end\s*\{align\*?\}/g, (match, body) => {
-      const rows = body.split(/\\\\|\n/).map(row => row.trim()).filter(Boolean);
-      const formattedRows = rows.map(row => {
-        return row.replace(/&/g, " ").trim();
-      });
-      return "\n" + formattedRows.join("\n") + "\n";
-    });
-
-    // Parse arrays: \begin{array}{...} ... \end{array}
-    clean = clean.replace(/\\begin\s*\{array\}\s*\{[^}]*\}([\s\S]*?)\\end\s*\{array\}/g, (match, body) => {
-      const rows = body.split(/\\\\|\n/).map(row => row.trim()).filter(Boolean);
-      const formattedRows = rows.map(row => {
-        if (row.includes("\\hline")) {
-          return "────────────────────────────────────────";
-        }
-        const cols = row.split("&").map(c => c.trim());
-        return cols.join("   |   ");
-      });
-      return "\n" + formattedRows.join("\n") + "\n";
-    });
-
-    // Normalize commonly garbled LaTeX escape sequences from JSON parsing
-    clean = clean.replaceAll("\\neq", "≠");
-    clean = clean.replaceAll("\\beta", "β");
-    clean = clean.replaceAll("\\theta", "θ");
-    clean = clean.replaceAll("\\times", "×");
-    clean = clean.replaceAll("\\to", "→");
-    
-    // Strip sizing and boundaries sizing
-    clean = clean.replace(/\\(left|right|big|Big|bigg|Big)/g, "");
-
-    // Clean up specific common raw display variants
-    clean = clean.replaceAll(", ext", "");
-    clean = clean.replaceAll(",ext", "");
-    clean = clean.replaceAll(", ", " ");
-
-    // Strip LaTeX math delimiters
-    clean = clean.replaceAll("$$", "");
-    clean = clean.replaceAll("$", "");
-    
-    // Replace degree symbols cleanly without affecting English words
-    clean = clean.replace(/(\^\\?circ|\\circ|\^?\{\\?circ\})/g, "°");
-
-    // Strip LaTeX formatting wrappers (e.g. \text{...}, \mathrm{...})
-    clean = clean.replace(/\\text\s*\{([^}]+)\}/g, "$1");
-    clean = clean.replace(/\\mathrm\s*\{([^}]+)\}/g, "$1");
-    clean = clean.replace(/\\mathrm/g, "");
-    clean = clean.replace(/\\mathbf\s*\{([^}]+)\}/g, "$1");
-    clean = clean.replace(/\\mathbf/g, "");
-
-    // Replace chemical reaction arrows
-    clean = clean.replace(/\\xrightarrow\s*\{([^}]+)\}/g, " --($1)--> ");
-
-    // 1. Fractions: \frac{A}{B} -> (A)/(B)
-    const fracRegex = /\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g;
-    while (fracRegex.test(clean)) {
-      clean = clean.replace(fracRegex, "($1)/($2)");
-    }
-    // Simple fractions without braces if any (e.g. \frac A B)
-    clean = clean.replace(/\\frac\s*([a-zA-Z0-9])\s*([a-zA-Z0-9])/g, "($1)/($2)");
-
-    // Strip curly braces from subscripts/superscripts
-    clean = clean.replace(/_\{([^}]+)\}/g, "_$1");
-    clean = clean.replace(/\^\{([^}]+)\}/g, "^$1");
-
-    // 2. Convert subscripts: e.g. _1 -> ₁ or _{max} -> ₘₐₓ
-    clean = clean.replace(/_\{?([0-9+\-nxyzabcdfghijklmnoprstuvwyz\(\)]+)\}?/g, (match, p1) => {
-      const charMap = {
-        "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄",
-        "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
-        "+": "₊", "-": "₋", "n": "ₙ", "x": "ₓ", "y": "ᵧ",
-        "i": "ᵢ", "j": "ⱼ", "m": "ₘ", "t": "ₜ",
-        "a": "ₐ", "b": "♭", "c": "꜀", "d": "ᵈ", "e": "ₑ",
-        "f": "բ", "g": "₉", "h": "ₕ", "k": "ₖ", "l": "ₗ",
-        "o": "ₒ", "p": "ₚ", "r": "ᵣ", "s": "ₛ", "u": "ᵤ",
-        "v": "ᵥ"
-      };
-      return p1.split("").map(c => charMap[c] || c).join("");
-    });
-
-    // 3. Convert superscripts: e.g. ^2 -> ² or ^{-2} -> ⁻²
-    clean = clean.replace(/\^\{?([0-9+\-nxyzabcdfghijklmnoprstuvwyz\(\)]+)\}?/g, (match, p1) => {
-      const charMap = {
-        "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
-        "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
-        "+": "⁺", "-": "⁻", "n": "ⁿ", "x": "ˣ", "y": "ʸ",
-        "(": "⁽", ")": "⁾", "a": "ᵃ", "b": "ᵇ", "c": "ᶜ",
-        "d": "ᵈ", "e": "ᵉ", "f": "ᶠ", "g": "ᵍ", "h": "ʰ",
-        "i": "ⁱ", "j": "ʲ", "k": "ᵏ", "l": "ˡ", "m": "ᵐ",
-        "p": "ᵖ", "r": "ʳ", "s": "ˢ", "t": "ᵗ", "u": "ᵘ",
-        "v": "ᵛ", "w": "ʷ", "z": "ᶻ"
-      };
-      return p1.split("").map(c => charMap[c] || c).join("");
-    });
-
-    // Remove backslashes from common trig/math functions
-    clean = clean.replace(/\\(sin|cos|tan|sec|csc|cot|log|ln|arcsin|arccos|arctan)/g, "$1");
-
-    // Clean escaped underscores to normal underscores
-    clean = clean.replace(/\\_/g, "_");
-
-    // 4. Standard LaTeX symbols to Unicode
-    const symbolMap = {
-      "\\propto": "∝",
-      "\\to": "→",
-      "\\lim": "lim",
-      "\\theta": "θ",
-      "\\alpha": "α",
-      "\\beta": "β",
-      "\\gamma": "γ",
-      "\\lambda": "λ",
-      "\\pi": "π",
-      "\\infty": "∞",
-      "\\Delta": "Δ",
-      "\\partial": "∂",
-      "\\int": "∫",
-      "\\sigma": "σ",
-      "\\omega": "ω",
-      "\\Omega": "Ω",
-      "\\phi": "φ",
-      "\\psi": "ψ",
-      "\\Psi": "Ψ",
-      "\\mu": "μ",
-      "\\epsilon": "ε",
-      "\\hbar": "ℏ",
-      "\\cdot": "·",
-      "\\times": "×",
-      "\\pm": "±",
-      "\\le": "≤",
-      "\\ge": "≥",
-      "\\neq": "≠",
-      "\\approx": "≈",
-      "\\sum": "∑",
-      "\\implies": "⟹",
-      "\\div": "÷",
-      "\\tau": "τ",
-      "\\eta": "η",
-      "\\nabla": "∇",
-      "\\cap": "∩",
-      "\\cup": "∪",
-      "\\in": "∈",
-      "\\notin": "∉",
-      "\\emptyset": "∅",
-      "\\subset": "⊂",
-      "\\subseteq": "⊆",
-      "\\exists": "∃",
-      "\\forall": "∀",
-      "\\land": "∧",
-      "\\iff": "⇔",
-      "\\Leftrightarrow": "⇔",
-      "\\Rightarrow": "⇒",
-      "\\quad": "  ",
-      "\\chi": "χ",
-      "\\oint": "∮",
-      "\\iint": "∬",
-      "\\iiint": "∭",
-      "\\cdots": "···",
-      "\\dots": "...",
-      "\\ldots": "..."
-    };
-    Object.entries(symbolMap).forEach(([latex, unicode]) => {
-      const escapedLatex = latex.replace(/\\/g, "\\\\");
-      clean = clean.replaceAll(new RegExp(escapedLatex, "g"), unicode);
-    });
-
-    // 5. Square root: \sqrt{x} -> √(x)
-    const sqrtRegex = /\\sqrt\s*\{([^{}]+)\}/g;
-    while (sqrtRegex.test(clean)) {
-      clean = clean.replace(sqrtRegex, "√($1)");
-    }
-
-    return clean;
   };
 
   // --- Active Test Handlers ---
@@ -851,22 +623,9 @@ export default function MockTests() {
 
     const timeSpent = 1200 - timeLeft;
     const isCustomQuiz = questionsFaced.some(q => q.id && q.id.toString().startsWith("custom"));
+    const targetUserId = user.id || "guest";
 
-    try {
-      const res = await api.post("/tests/submit", {
-        student_id: user.id || "guest",
-        subject: activeSubject,
-        answers: answersPayload,
-        time_taken_seconds: timeSpent > 0 ? timeSpent : 1,
-        ...(isCustomQuiz ? { questions: questionsFaced } : {})
-      });
-
-      setResults(res.data);
-      setTestActive(false);
-    } catch (err) {
-      console.warn("Failed to grade test submission via API, grading locally:", err);
-      toast.success("Graded assessment locally (offline fallback mode).");
-      
+    const gradeLocally = () => {
       const totalCount = Object.keys(answersPayload).length;
       let correctCount = 0;
       const gradedDetails = [];
@@ -891,21 +650,74 @@ export default function MockTests() {
       const score = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
       const predictedExamScore = Math.min(99, Math.round(score * 0.45 + 52));
       
-      const localResults = {
-        status: "success",
+      return {
+        score,
+        totalCount,
+        correctCount,
+        predictedExamScore,
+        gradedDetails,
+        localResults: {
+          status: "success",
+          score,
+          total_questions: totalCount,
+          correct_answers: correctCount,
+          predicted_exam_score: predictedExamScore,
+          graded_details: gradedDetails
+        }
+      };
+    };
+
+    const saveQuizResultLocally = (score, totalCount, correctCount, gradedDetails) => {
+      const localQuizResult = {
+        id: "local_" + Math.random().toString(36).substr(2, 9),
+        student_id: targetUserId,
+        course_id: null,
+        subject: activeSubject,
+        topic: gradedDetails[0]?.topic || "General Test",
         score,
         total_questions: totalCount,
         correct_answers: correctCount,
-        predicted_exam_score: predictedExamScore,
-        graded_details: gradedDetails
+        time_taken_seconds: timeSpent > 0 ? timeSpent : 1,
+        attempted_at: new Date().toISOString()
       };
+      const key = `edumind_local_quiz_results_${targetUserId}`;
+      const localResultsList = JSON.parse(localStorage.getItem(key) || "[]");
+      localResultsList.push(localQuizResult);
+      localStorage.setItem(key, JSON.stringify(localResultsList));
+    };
+
+    if (targetUserId === "guest") {
+      const { score, totalCount, correctCount, gradedDetails, localResults } = gradeLocally();
+      saveQuizResultLocally(score, totalCount, correctCount, gradedDetails);
+      setResults(localResults);
+      setTestActive(false);
+      setLoading(false);
+      window.dispatchEvent(new Event("edumind_db_sync"));
+      return;
+    }
+
+    try {
+      const res = await api.post("/tests/submit", {
+        student_id: targetUserId,
+        subject: activeSubject,
+        answers: answersPayload,
+        time_taken_seconds: timeSpent > 0 ? timeSpent : 1,
+        ...(isCustomQuiz ? { questions: questionsFaced } : {})
+      });
+
+      setResults(res.data);
+      setTestActive(false);
+    } catch (err) {
+      console.warn("Failed to grade test submission via API, grading locally:", err);
+      toast.success("Graded assessment locally (offline fallback mode).");
       
+      const { score, totalCount, correctCount, gradedDetails, localResults } = gradeLocally();
       setResults(localResults);
       setTestActive(false);
       
       try {
         await supabase.from("quiz_results").insert({
-          student_id: user.id || "guest",
+          student_id: targetUserId,
           subject: activeSubject,
           topic: gradedDetails[0]?.topic || "General Test",
           score,
@@ -914,7 +726,8 @@ export default function MockTests() {
           time_taken_seconds: timeSpent
         });
       } catch (dbErr) {
-        console.warn("Could not save fallback quiz result directly to Supabase:", dbErr);
+        console.warn("Could not save fallback quiz result directly to Supabase, saving locally:", dbErr);
+        saveQuizResultLocally(score, totalCount, correctCount, gradedDetails);
       }
     } finally {
       setLoading(false);
@@ -1021,20 +834,71 @@ export default function MockTests() {
     setResults(localResults);
     setTestActive(false);
     setShowSubmitModal(false);
+
+    // Fetch ARIA remediation feedback dynamically for the JEE Mock test
+    api.post("/tests/aria-feedback", {
+      subject: activeSubject || "JEE Mock Exam",
+      score: scorePercent,
+      graded_details: gradedDetails.map(q => ({
+        id: q.id,
+        topic: q.topic,
+        difficulty: q.difficulty,
+        text: q.text,
+        options: q.options,
+        chosen_index: q.type === "numerical" ? null : (q.chosen_value !== undefined && q.chosen_value !== "" ? parseInt(q.chosen_value) : -1),
+        correct_index: q.type === "numerical" ? null : q.correct_index,
+        chosen_value: q.type === "numerical" ? q.chosen_value : null,
+        correct_value: q.type === "numerical" ? q.correct_value : null,
+        is_correct: q.is_correct,
+        solution: q.solution
+      }))
+    }).then(ariaRes => {
+      if (ariaRes.data && ariaRes.data.aria_feedback) {
+        localResults.aria_feedback = ariaRes.data.aria_feedback;
+        setResults({ ...localResults });
+      }
+    }).catch(ariaErr => {
+      console.warn("Failed to retrieve JEE ARIA feedback:", ariaErr);
+    });
     
-    // Attempt save to Supabase
-    try {
-      await supabase.from("quiz_results").insert({
-        student_id: user.id || "guest",
-        subject: activeSubject,
-        topic: jeeTestType === 4 ? "JEE Full Mock Exam" : "JEE Sectional Mock",
-        score: scorePercent,
-        total_questions: questionsFaced.length,
-        correct_answers: correctCount,
-        time_taken_seconds: timeSpent
-      });
-    } catch (dbErr) {
-      console.warn("Could not save fallback quiz result directly to Supabase:", dbErr);
+    // Attempt save to Supabase or fallback to local storage
+    const targetUserId = user.id || "guest";
+    const localQuizResult = {
+      id: "local_" + Math.random().toString(36).substr(2, 9),
+      student_id: targetUserId,
+      course_id: null,
+      subject: activeSubject,
+      topic: jeeTestType === 4 ? "JEE Full Mock Exam" : "JEE Sectional Mock",
+      score: scorePercent,
+      total_questions: questionsFaced.length,
+      correct_answers: correctCount,
+      time_taken_seconds: timeSpent > 0 ? timeSpent : 1,
+      attempted_at: new Date().toISOString()
+    };
+
+    if (targetUserId === "guest") {
+      const key = "edumind_local_quiz_results_guest";
+      const localResultsList = JSON.parse(localStorage.getItem(key) || "[]");
+      localResultsList.push(localQuizResult);
+      localStorage.setItem(key, JSON.stringify(localResultsList));
+    } else {
+      try {
+        await supabase.from("quiz_results").insert({
+          student_id: targetUserId,
+          subject: activeSubject,
+          topic: jeeTestType === 4 ? "JEE Full Mock Exam" : "JEE Sectional Mock",
+          score: scorePercent,
+          total_questions: questionsFaced.length,
+          correct_answers: correctCount,
+          time_taken_seconds: timeSpent
+        });
+      } catch (dbErr) {
+        console.warn("Could not save fallback quiz result directly to Supabase, saving locally:", dbErr);
+        const key = `edumind_local_quiz_results_${targetUserId}`;
+        const localResultsList = JSON.parse(localStorage.getItem(key) || "[]");
+        localResultsList.push(localQuizResult);
+        localStorage.setItem(key, JSON.stringify(localResultsList));
+      }
     }
     
     window.dispatchEvent(new Event("edumind_db_sync"));
@@ -2211,8 +2075,8 @@ export default function MockTests() {
                   <Sparkles size={13} className="text-purple-400 animate-pulse" />
                   ARIA Remediation Advice
                 </h4>
-                <p className="text-[13px] text-gray-300 leading-relaxed font-sans">
-                  {(() => {
+                <p className="text-[13px] text-gray-300 leading-relaxed font-sans whitespace-pre-wrap">
+                  {results.aria_feedback ? cleanMathLaTeX(results.aria_feedback) : (() => {
                     const wrongQuestions = results.graded_details.filter(q => !q.is_correct);
                     const wrongTopics = [...new Set(wrongQuestions.map(q => q.topic))];
                     

@@ -14,6 +14,7 @@ import { supabase } from "../services/supabase";
 import api from "../services/api";
 import { CURRICULUM } from "../utils/curriculum";
 import { fetchStudentMlMetrics, buildForecastHistory } from "../utils/studentMetrics";
+import { cleanMathLaTeX } from "../utils/mathUtils";
 import {
   ensureDailyReset,
   getDailyPeriodKey,
@@ -351,18 +352,151 @@ export default function Dashboard() {
         }
         console.log("[EduMind Diagnostics] Dashboard enrolledCourses:", enrolledCourses);
 
+        // Sync guest/local enrollments to the database
+        try {
+          const guestEnrollments = JSON.parse(localStorage.getItem("edumind_local_enrollments_guest") || "[]");
+          const localEnrollments = JSON.parse(localStorage.getItem(`edumind_local_enrollments_${activeUserId}`) || "[]");
+          const combinedLocal = Array.from(new Set([...guestEnrollments, ...localEnrollments]));
+          
+          if (combinedLocal.length > 0) {
+            let hasNewSync = false;
+            for (const courseId of combinedLocal) {
+              if (!enrolledCourses.some(e => e.course_id === courseId || e.courses?.id === courseId)) {
+                try {
+                  await api.post(`/courses/${courseId}/enroll?student_id=${activeUserId}`);
+                  hasNewSync = true;
+                } catch (syncErr) {
+                  try {
+                    await supabase.from("enrollments").insert({
+                      student_id: activeUserId,
+                      course_id: courseId
+                    });
+                    hasNewSync = true;
+                  } catch (dbErr) {
+                    console.warn(`Failed to sync course ${courseId} on dashboard:`, dbErr);
+                  }
+                }
+              }
+            }
+            if (hasNewSync) {
+              try {
+                const enrollRes = await api.get(`/courses/my-courses/${activeUserId}`);
+                enrolledCourses = enrollRes.data || enrolledCourses;
+              } catch (err) {
+                const enrollmentsRes = await supabase.from("enrollments").select("*, courses(*)").eq("student_id", activeUserId);
+                enrolledCourses = enrollmentsRes.data || enrolledCourses;
+              }
+            }
+            // Update local storage cache
+            const allDbCourseIds = enrolledCourses.map(e => e.course_id);
+            localStorage.setItem(`edumind_local_enrollments_${activeUserId}`, JSON.stringify(allDbCourseIds));
+            localStorage.removeItem("edumind_local_enrollments_guest");
+          } else {
+            // Just cache the database enrollments
+            const allDbCourseIds = enrolledCourses.map(e => e.course_id);
+            localStorage.setItem(`edumind_local_enrollments_${activeUserId}`, JSON.stringify(allDbCourseIds));
+          }
+        } catch (syncErr) {
+          console.warn("Dashboard enrollment sync failed:", syncErr);
+        }
+
         // 2. Fetch quiz results via backend API (resilient)
         let quizResults = [];
         try {
           const quizRes = await api.get(`/students/performance/${activeUserId}`);
           quizResults = quizRes.data || [];
-          // Sort ascending for chart utility
-          quizResults = [...quizResults].reverse();
         } catch (err) {
           console.warn("Backend failed to load quiz results, falling back directly to Supabase:", err);
           const quizRes = await supabase.from("quiz_results").select("*").eq("student_id", activeUserId).order("attempted_at", { ascending: true });
           quizResults = quizRes.data || [];
         }
+
+        // Sync guest/local quiz results to the database if logged in
+        try {
+          const guestQuizzes = JSON.parse(localStorage.getItem("edumind_local_quiz_results_guest") || "[]");
+          const localQuizzes = JSON.parse(localStorage.getItem(`edumind_local_quiz_results_${activeUserId}`) || "[]");
+          const combinedLocalQuizzes = [...guestQuizzes, ...localQuizzes];
+
+          if (combinedLocalQuizzes.length > 0 && activeUserId && activeUserId !== "guest") {
+            let hasNewQuizSync = false;
+            for (const quiz of combinedLocalQuizzes) {
+              const isAlreadyInDb = quizResults.some(dbItem => 
+                dbItem.subject === quiz.subject &&
+                dbItem.topic === quiz.topic &&
+                dbItem.score === quiz.score &&
+                Math.abs(new Date(dbItem.attempted_at) - new Date(quiz.attempted_at)) < 5000
+              );
+
+              if (!isAlreadyInDb) {
+                try {
+                  await api.post(`/students/quiz-result?student_id=${activeUserId}`, {
+                    course_id: quiz.course_id || null,
+                    subject: quiz.subject,
+                    topic: quiz.topic,
+                    score: quiz.score,
+                    total_questions: quiz.total_questions,
+                    correct_answers: quiz.correct_answers,
+                    time_taken_seconds: quiz.time_taken_seconds
+                  });
+                  hasNewQuizSync = true;
+                } catch (syncErr) {
+                  try {
+                    await supabase.from("quiz_results").insert({
+                      student_id: activeUserId,
+                      course_id: quiz.course_id || null,
+                      subject: quiz.subject,
+                      topic: quiz.topic,
+                      score: quiz.score,
+                      total_questions: quiz.total_questions,
+                      correct_answers: quiz.correct_answers,
+                      time_taken_seconds: quiz.time_taken_seconds,
+                      attempted_at: quiz.attempted_at
+                    });
+                    hasNewQuizSync = true;
+                  } catch (dbErr) {
+                    console.warn("Failed to sync quiz result to database:", dbErr);
+                  }
+                }
+              }
+            }
+
+            if (hasNewQuizSync) {
+              try {
+                const quizRes = await api.get(`/students/performance/${activeUserId}`);
+                quizResults = quizRes.data || quizResults;
+              } catch (err) {
+                const quizRes = await supabase.from("quiz_results").select("*").eq("student_id", activeUserId).order("attempted_at", { ascending: true });
+                quizResults = quizRes.data || quizResults;
+              }
+            }
+
+            localStorage.removeItem("edumind_local_quiz_results_guest");
+            localStorage.setItem(`edumind_local_quiz_results_${activeUserId}`, "[]");
+          }
+        } catch (syncErr) {
+          console.warn("Dashboard quiz results sync failed:", syncErr);
+        }
+
+        // Merge local/guest results with DB results
+        const localResultsGuest = JSON.parse(localStorage.getItem("edumind_local_quiz_results_guest") || "[]");
+        const localResultsUser = JSON.parse(localStorage.getItem(`edumind_local_quiz_results_${activeUserId}`) || "[]");
+        const allLocalResults = [...localResultsGuest, ...localResultsUser];
+
+        const combinedQuizResults = [...quizResults];
+        allLocalResults.forEach(localItem => {
+          const isDuplicate = quizResults.some(dbItem => 
+            dbItem.subject === localItem.subject &&
+            dbItem.topic === localItem.topic &&
+            dbItem.score === localItem.score &&
+            Math.abs(new Date(dbItem.attempted_at) - new Date(localItem.attempted_at)) < 5000
+          );
+          if (!isDuplicate) {
+            combinedQuizResults.push(localItem);
+          }
+        });
+
+        // Sort ascending by attempted_at chronologically for dashboard stats and chart tools
+        quizResults = combinedQuizResults.sort((a, b) => new Date(a.attempted_at) - new Date(b.attempted_at));
 
         // 3. Fetch study sessions via backend API (resilient)
         let studySessions = [];
@@ -389,6 +523,24 @@ export default function Dashboard() {
         }
         const doubtsTodayCount = countSinceDailyPeriodStart(doubtsHistory, "created_at");
         setDoubtsToday(doubtsTodayCount);
+
+        // Sync guest completed lessons if any
+        try {
+          const guestCompleted = JSON.parse(localStorage.getItem("edumind_completed_lessons_undefined") || "[]");
+          const guestCompleted2 = JSON.parse(localStorage.getItem("edumind_completed_lessons_guest") || "[]");
+          const combinedGuestCompleted = Array.from(new Set([...guestCompleted, ...guestCompleted2]));
+          
+          const completedKey = `edumind_completed_lessons_${activeUserId}`;
+          if (combinedGuestCompleted.length > 0) {
+            const userCompleted = JSON.parse(localStorage.getItem(completedKey) || "[]");
+            const combinedCompleted = Array.from(new Set([...userCompleted, ...combinedGuestCompleted]));
+            localStorage.setItem(completedKey, JSON.stringify(combinedCompleted));
+            localStorage.removeItem("edumind_completed_lessons_undefined");
+            localStorage.removeItem("edumind_completed_lessons_guest");
+          }
+        } catch (syncErr) {
+          console.warn("Dashboard completed lessons sync failed:", syncErr);
+        }
 
         // Seed initial completed lessons locally for realistic starting dashboard state
         const completedKey = `edumind_completed_lessons_${activeUserId}`;
@@ -578,6 +730,10 @@ export default function Dashboard() {
           loading: false
         });
 
+        if (isNewUser && (enrolledCourses.length > 0 || quizResults.length > 0 || studySessions.length > 0)) {
+          localStorage.removeItem("edumind_new_user");
+        }
+
         setDailyXp(getDailyXp(activeUserId));
 
         // Run ML predictions with live student metrics
@@ -592,7 +748,10 @@ export default function Dashboard() {
             : Promise.resolve({ data: [] });
 
           const [riskRes, forecastRes] = await Promise.all([
-            api.post("/ml/predict-risk", metrics),
+            api.post("/ml/predict-risk", {
+              ...metrics,
+              student_id: activeUserId
+            }),
             forecastPromise,
           ]);
 
@@ -1038,7 +1197,7 @@ export default function Dashboard() {
                         {mlData.risk.recommendations.map((rec, i) => (
                           <li key={i} className="flex items-start gap-1.5 hover:text-purple-200 transition-colors">
                             <span className="text-purple-400 mt-1">✦</span>
-                            <span>{rec}</span>
+                            <span>{cleanMathLaTeX(rec)}</span>
                           </li>
                         ))}
                       </ul>

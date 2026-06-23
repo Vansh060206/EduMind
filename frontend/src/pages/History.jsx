@@ -116,8 +116,26 @@ export default function History() {
           results = res.data || [];
         }
 
+        // Load local/guest quiz results from localStorage
+        const localResultsGuest = JSON.parse(localStorage.getItem("edumind_local_quiz_results_guest") || "[]");
+        const localResultsUser = JSON.parse(localStorage.getItem(`edumind_local_quiz_results_${activeUserId}`) || "[]");
+        const allLocalResults = [...localResultsGuest, ...localResultsUser];
+
+        const combinedResults = [...results];
+        allLocalResults.forEach(localItem => {
+          const isDuplicate = results.some(dbItem => 
+            dbItem.subject === localItem.subject &&
+            dbItem.topic === localItem.topic &&
+            dbItem.score === localItem.score &&
+            Math.abs(new Date(dbItem.attempted_at) - new Date(localItem.attempted_at)) < 5000
+          );
+          if (!isDuplicate) {
+            combinedResults.push(localItem);
+          }
+        });
+
         // Sort descending by date (most recent first)
-        results = results.sort((a, b) => new Date(b.attempted_at) - new Date(a.attempted_at));
+        results = combinedResults.sort((a, b) => new Date(b.attempted_at) - new Date(a.attempted_at));
         setQuizResults(results);
       } catch (err) {
         console.error("Failed to load historical assessments:", err);

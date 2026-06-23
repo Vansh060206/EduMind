@@ -269,11 +269,31 @@ export default function Analytics() {
       try {
         const quizRes = await api.get(`/students/performance/${activeUserId}`);
         quizResults = quizRes.data || [];
-        quizResults = [...quizResults].reverse(); // Sort chronological
       } catch (err) {
         const quizRes = await supabase.from("quiz_results").select("*").eq("student_id", activeUserId).order("attempted_at", { ascending: true });
         quizResults = quizRes.data || [];
       }
+
+      // Merge with local storage results to prevent sync lag
+      const localResultsGuest = JSON.parse(localStorage.getItem("edumind_local_quiz_results_guest") || "[]");
+      const localResultsUser = JSON.parse(localStorage.getItem(`edumind_local_quiz_results_${activeUserId}`) || "[]");
+      const allLocalResults = [...localResultsGuest, ...localResultsUser];
+
+      const combinedQuizResults = [...quizResults];
+      allLocalResults.forEach(localItem => {
+        const isDuplicate = quizResults.some(dbItem => 
+          dbItem.subject === localItem.subject &&
+          dbItem.topic === localItem.topic &&
+          dbItem.score === localItem.score &&
+          Math.abs(new Date(dbItem.attempted_at) - new Date(localItem.attempted_at)) < 5000
+        );
+        if (!isDuplicate) {
+          combinedQuizResults.push(localItem);
+        }
+      });
+
+      // Sort chronological ascending (oldest first for charts)
+      quizResults = combinedQuizResults.sort((a, b) => new Date(a.attempted_at) - new Date(b.attempted_at));
 
       // 2. Fetch study sessions
       let studySessions = [];

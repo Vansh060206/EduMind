@@ -1,7 +1,7 @@
 # routes/ml.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from ml.performance import PerformancePredictor
 from ml.forecaster import ScoreForecaster
@@ -19,6 +19,8 @@ class RiskPredictionRequest(BaseModel):
     doubts_asked: int
     quizzes_done: int
     streak: int
+    student_id: Optional[str] = None
+    subject: Optional[str] = None
 
 class ScoreHistoryPoint(BaseModel):
     date: str
@@ -36,7 +38,9 @@ async def predict_risk(data: RiskPredictionRequest):
             study_hours=data.study_hours,
             doubts_asked=data.doubts_asked,
             quizzes_done=data.quizzes_done,
-            streak=data.streak
+            streak=data.streak,
+            student_id=data.student_id,
+            subject=data.subject
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Risk prediction engine failure: {str(e)}")

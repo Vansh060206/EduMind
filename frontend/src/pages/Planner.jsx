@@ -185,6 +185,27 @@ export default function Planner() {
           quizResults = res.data || [];
         }
 
+        // Merge with local storage results to prevent sync lag
+        const localResultsGuest = JSON.parse(localStorage.getItem("edumind_local_quiz_results_guest") || "[]");
+        const localResultsUser = JSON.parse(localStorage.getItem(`edumind_local_quiz_results_${activeUserId}`) || "[]");
+        const allLocalResults = [...localResultsGuest, ...localResultsUser];
+
+        const combinedQuizResults = [...quizResults];
+        allLocalResults.forEach(localItem => {
+          const isDuplicate = quizResults.some(dbItem => 
+            dbItem.subject === localItem.subject &&
+            dbItem.topic === localItem.topic &&
+            dbItem.score === localItem.score &&
+            Math.abs(new Date(dbItem.attempted_at) - new Date(localItem.attempted_at)) < 5000
+          );
+          if (!isDuplicate) {
+            combinedQuizResults.push(localItem);
+          }
+        });
+
+        // Sort chronological ascending
+        quizResults = combinedQuizResults.sort((a, b) => new Date(a.attempted_at) - new Date(b.attempted_at));
+
         // Build a mock history of at least 3 items if they have empty results
         // This ensures the Prophet forecaster has a baseline to project a beautiful curve
         if (quizResults.length === 0) {

@@ -120,15 +120,52 @@ async def login(data: LoginRequest):
 async def get_me(token: str):
     # Decode JWT to get user info
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        except Exception:
+            # Fallback for Supabase / Google OAuth JWT tokens (signed by Supabase using RS256)
+            payload = jwt.decode(token, "", options={"verify_signature": False, "verify_aud": False})
+            iss = payload.get("iss", "")
+            aud = payload.get("aud", "")
+            if not ((iss and "supabase" in iss) or (iss and "google" in iss) or (aud == "authenticated")):
+                raise Exception("Invalid token signature and issuer details.")
+                
         user_id = payload.get("sub")
         result = supabase.table("users")\
             .select("id, name, email, role, avatar_url, created_at")\
             .eq("id", user_id)\
             .execute()
-        return result.data[0]
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        if result.data:
+            from dependencies import VERIFIED_USERS
+            VERIFIED_USERS.add(user_id)
+            return result.data[0]
+        else:
+            # Auto-provision user
+            email = payload.get("email") or ""
+            metadata = payload.get("user_metadata", {}) or {}
+            name = metadata.get("full_name") or metadata.get("name") or email.split("@")[0] or "Student"
+            avatar_url = metadata.get("avatar_url") or None
+            role = payload.get("role") or "student"
+            
+            try:
+                new_user_res = supabase.table("users").insert({
+                    "id": user_id,
+                    "name": name,
+                    "email": email,
+                    "role": role,
+                    "avatar_url": avatar_url
+                }).execute()
+                if new_user_res.data:
+                    from dependencies import VERIFIED_USERS
+                    VERIFIED_USERS.add(user_id)
+                    return new_user_res.data[0]
+            except Exception as e:
+                import logging
+                logger = logging.getLogger("uvicorn")
+                logger.error(f"[Auth] Auto-provisioning user failed in /me: {e}")
+            raise HTTPException(status_code=404, detail="User not found and could not be provisioned")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
 
 @router.post("/survey")
 async def save_survey(data: SurveySaveRequest):
