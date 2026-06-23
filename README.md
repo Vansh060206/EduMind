@@ -66,13 +66,31 @@ flowchart TD
     Diagnostics --> Quiz
 ```
 
-### Machine Learning Modules
+### 🧠 Machine Learning & Intelligent Tutoring System
 
-1. **Random Forest Performance Predictor (`ml/performance.py`)**
-   Predicts readiness categories (**At-Risk**, **On-Track**, **Advanced**) based on average test scores, weekly study hours, doubt requests, quiz counts, and daily active streaks using a Random Forest Classifier.
-   
-2. **Ridge Regression Score Forecaster (`ml/forecaster.py`)**
-   Projects a student’s score trend up to 30 days ahead using Ridge Regression with manual seasonality adjustments (weekly cycles calculated via sine wave transformations).
+EduMind deploys a layered intelligence engine combining custom-trained scikit-learn models for analytical telemetry with Groq-hosted LLMs for cognitive science tutoring.
+
+#### 1. Predictive Performance Classification (`backend/ml/performance.py`)
+* **Model**: Random Forest Classifier (`weights/performance_model.pkl`)
+* **Target Categories**: `At-Risk`, `On-Track`, `Advanced`
+* **Features Used**: Average quiz scores, self-study hours, total doubt queries raised, quizzes completed, and active daily streak.
+* **Feature Importance Analytics**: Calculates the exact mathematical impact of each study vector (e.g. study time vs. quiz scores) to show students what controls their trajectory.
+* **Groq Integration**: If the student has identified weaknesses stored in the database, the engine queries `llama-3.1-8b-instant` to generate custom telemetry-driven study recommendations (concise, 15-word action items) targeting their weak topics.
+* **Deterministic Fallback**: Automatically activates a heuristic rule-based recommender engine if model weights are unbuilt or API keys are missing.
+
+#### 2. Time-Series Score Forecasting (`backend/ml/forecaster.py`)
+* **Model**: Ridge Regression (`weights/forecaster_model.pkl`)
+* **Goal**: Projects a student's score trend over the next 30 days (evaluating six future intervals spaced 5 days apart).
+* **Seasonality Adjustment**: Computes a continuous weekly seasonality cycle using a mathematical sine wave transformation ($\sin(\theta)$) to mirror human learning variance.
+* **Uncertainty Bounds**: Generates expanding upper and lower confidence intervals over time to reflect increasing statistical uncertainty, rendering beautiful margin-of-error bounds on the frontend charting system.
+
+#### 3. Cognitive AI Agent: Professor ARIA
+The backend exposes advanced LLM endpoints leveraging **Groq Cloud API** models (`llama-3.3-70b-versatile` & `llama-3.1-8b-instant`) to drive the adaptive learning cycle:
+* **Adaptive Question Generation (`/tests/generate`)**: Generates dynamically formatted JEE/NEET questions with unique solution steps when static pools are depleted.
+* **Targeted Custom Test Assembly (`/tests/generate-custom`)**: Accepts student requested topics, matches them with active weak points, and crafts specialized mocks.
+* **Dynamic LaTeX Remediation Advice (`/tests/aria-feedback`)**: Analyzes incorrect options chosen by students, detects conceptual misconceptions, outputs structured explanation blocks with inline/block LaTeX rendering, and maps out targeted recovery plans.
+* **Smart Quiz Retake / Retry Similar (`/tests/retry-similar`)**: Automatically compiles a 5-question retry drill containing questions directly related to recently registered mistakes to ensure immediate knowledge gap closure.
+* **Offline Fallback & Local Resiliency**: When network or DB queries fail, the platform switches to a client-side offline grading engine. The local results are cached in local storage and synced automatically with the central database on reconnection.
 
 ---
 
